@@ -8,6 +8,7 @@ import {
   buildCatalogFromFiles,
   buildCollection,
   buildCollectionFromFiles,
+  FOLLETT_FORMAT,
   ingestFollettRows,
   isExcludedPostedTitle,
   loadPostedExclusions,
@@ -130,6 +131,7 @@ describe("title key", () => {
     expect(titleKey("A Plate of Hope")).toBe("plate of hope");
     expect(titleKey("DON'T TRUST FISH!")).toBe("don t trust fish");
     expect(titleKey("Barbie : a fashion fairytale")).toBe("barbie a fashion fairytale");
+    expect(titleKey("13 Little Blue Envelopes (unabridged)")).toBe("13 little blue envelopes");
   });
 });
 
@@ -449,11 +451,12 @@ describe("posted title exclusions", () => {
     const ingested = ingestFollettRows([
       { Author: "Hopkins, Ellen.", ISBN: "9781439106518", "Material Type": "eBook", "Series Title": "Crank." },
       { Author: "Hopkins, Ellen.", ISBN: "9781416940906", "Material Type": "Book", "Series Title": "Glass." },
+      { Author: "Hopkins, Ellen.", ISBN: "9781442471818", "Material Type": "Sound", "Series Title": "Crank." },
     ]);
     const compact = attachHoldingsToCollection(posted, ingested);
     expect(posted.titles.map((title) => title.title)).toEqual(["Harbor Lights"]);
     expect(posted.titles[0].posted).not.toBe(false);
-    expect(compact.n).toBe(2);
+    expect(compact.n).toBe(3);
     expect(posted.stats.holdingsLinkedToPosted).toBe(0);
   });
 
@@ -483,5 +486,266 @@ describe("posted title exclusions", () => {
     expect(payload.uniqueTitleCount).toBe(1);
     expect(payload.titles[0].title).toBe("Impulse");
     expect(payload.stats.skippedExcludedRows).toBe(2);
+  });
+});
+
+describe("Follett Sound/Recording audiobooks", () => {
+  it("unions an audiobook ISBN onto an existing titled card and marks Audio", () => {
+    const posted = buildCollection([
+      rows([
+        {
+          Title: "Don't trust fish",
+          Author: "Sharpson, Neil",
+          ISBN: "9780593616673",
+          "Source Batch": "Sep 2025",
+          Level: "Elementary",
+        },
+      ]),
+    ]);
+    const ingested = ingestFollettRows([
+      { Author: "Sharpson, Neil", ISBN: "978-0-593-61667-3", "Material Type": "Book", "Series Title": "" },
+      { Author: "Sharpson, Neil", ISBN: "9780593616999", "Material Type": "Sound", "Series Title": "Don't Trust Fish" },
+    ]);
+    const compact = attachHoldingsToCollection(posted, ingested);
+    expect(posted.uniqueTitleCount).toBe(1);
+    const title = posted.titles[0];
+    expect(title.title).toBe("Don't trust fish");
+    expect(title.titleUnknown).toBeFalsy();
+    expect(title.formats.book).toBe(true);
+    expect(title.formats.audio).toBe(true);
+    expect(title.isbnDigits).toEqual(expect.arrayContaining(["9780593616673", "9780593616999"]));
+    expect(title.inCollection).toBe(true);
+    expect(compact.n).toBe(0);
+  });
+
+  it("keeps an audio-only ISBN searchable as In collection when no book/ebook counterpart exists", () => {
+    const posted = buildCollection([
+      rows([{ Title: "Harbor Lights", Author: "Ng, C", ISBN: "9787777777777", "Source Batch": "Apr 2026" }]),
+    ]);
+    const ingested = ingestFollettRows([
+      { Author: "Someone, A", ISBN: "0-8072-1026-9", "Material Type": "Sound", "Series Title": "" },
+      { Author: "Skip", ISBN: "9780000000000", "Material Type": "Video" },
+    ]);
+    const compact = attachHoldingsToCollection(posted, ingested);
+    expect(posted.uniqueTitleCount).toBe(1);
+    expect(posted.titles[0].formats.audio).toBe(false);
+    expect(posted.titles[0].isbnDigits).not.toContain("9780807210260");
+    expect(compact.n).toBe(1);
+    expect(String(compact.r[0][0])).toBe("9780807210260");
+    expect(compact.r[0][3] & FOLLETT_FORMAT.audio).toBeTruthy();
+    expect(compact.r[0][3] & FOLLETT_FORMAT.book).toBeFalsy();
+  });
+
+  it("does not create a second titled card when Sound and Book share a normalized title", () => {
+    const payload = buildCollection([
+      rows([{ Title: "The Last Kids on Earth", Author: "Brallier, Max", ISBN: "9780425287378", "Source Batch": "Sep 2025" }]),
+      {
+        filePath: "follett.xlsx",
+        label: "follett.xlsx",
+        kind: "follett",
+        rows: [
+          { Author: "Brallier, Max.", ISBN: "9780525495581", "Material Type": "Sound", "Series Title": "The Last Kids on Earth." },
+          { Author: "Brallier, Max.", ISBN: "9780525495628", "Material Type": "Recording", "Series Title": "The Last Kids on Earth" },
+        ],
+      },
+    ]);
+    expect(payload.uniqueTitleCount).toBe(1);
+    expect(payload.titles.filter((title) => titleKey(title.title) === "last kids on earth")).toHaveLength(1);
+    expect(payload.titles[0].formats.audio).toBe(true);
+    expect(payload.titles[0].isbnDigits).toEqual(
+      expect.arrayContaining(["9780425287378", "9780525495581", "9780525495628"]),
+    );
+  });
+
+  it("ORs Audio onto an existing Book ISBN instead of a second holdings record", () => {
+    const ingested = ingestFollettRows([
+      { Author: "A", ISBN: "9781111111111", "Material Type": "Book" },
+      { Author: "A", ISBN: "9781111111111", "Material Type": "Sound" },
+    ]);
+    expect(ingested.accepted).toBe(2);
+    expect(ingested.byIsbn.size).toBe(1);
+    expect(ingested.byIsbn.get("9781111111111")?.format).toBe(FOLLETT_FORMAT.book | FOLLETT_FORMAT.audio);
+  });
+
+  it("ingests Sound and Recording and still skips Video/Kit", () => {
+    const ingested = ingestFollettRows([
+      { Author: "A", ISBN: "9781111111111", "Material Type": "Book" },
+      { Author: "B", ISBN: "9782222222222", "Material Type": "Sound" },
+      { Author: "C", ISBN: "9783333333333", "Material Type": "Recording" },
+      { Author: "D", ISBN: "9784444444444", "Material Type": "Video" },
+      { Author: "E", ISBN: "9785555555555", "Material Type": "Kit" },
+      { Author: "F", ISBN: "", "Material Type": "Sound" },
+    ]);
+    expect(ingested.accepted).toBe(3);
+    expect(ingested.skippedType).toBe(2);
+    expect(ingested.skippedNoIsbn).toBe(1);
+    expect(ingested.byIsbn.get("9782222222222")?.format).toBe(FOLLETT_FORMAT.audio);
+    expect(ingested.byIsbn.get("9783333333333")?.format).toBe(FOLLETT_FORMAT.audio);
+  });
+});
+
+describe("Sora export", () => {
+  it("unions a Sora ebook ISBN onto an existing posted title and does not create a duplicate card", () => {
+    const payload = buildCollection([
+      rows([
+        {
+          Title: "Don't trust fish",
+          Author: "Sharpson, Neil",
+          ISBN: "9780593616673",
+          "Source Batch": "Sep 2025",
+          Level: "Elementary",
+        },
+      ]),
+      {
+        filePath: "Sora-titles.xlsx",
+        label: "Sora-titles.xlsx",
+        kind: "sora",
+        rows: [
+          {
+            TitleID: 1,
+            Title: "Don't Trust Fish!",
+            Creator: "Sharpson, Neil",
+            ISBN: "9780593616680",
+            Format: "Ebook",
+            "Audience/Rating": "Juvenile Fiction",
+            "Content access levels": "Elementary",
+          },
+          {
+            TitleID: 2,
+            Title: "Don't Trust Fish! (unabridged)",
+            Creator: "Sharpson, Neil",
+            ISBN: "9780593616999",
+            Format: "Audiobook",
+            "Audience/Rating": "Juvenile Fiction",
+            "Content access levels": "Elementary",
+          },
+        ],
+      },
+    ]);
+    expect(payload.uniqueTitleCount).toBe(1);
+    const title = payload.titles[0];
+    expect(titleKey(title.title)).toBe("don t trust fish");
+    expect(title.title).toBe("Don't trust fish");
+    expect(title.formats.ebook).toBe(true);
+    expect(title.formats.audio).toBe(true);
+    expect(title.isbnDigits).toEqual(expect.arrayContaining(["9780593616673", "9780593616680", "9780593616999"]));
+    expect(title.inCollection).toBe(true);
+    expect(title.posted).toBe(true);
+    expect(title.batches).toEqual(expect.arrayContaining(["Sep 2025", "Sora 2026-09-16"]));
+    expect(title.holdingsBatches).toEqual(["Sora 2026-09-16"]);
+    expect(title.levels).toEqual(["Elementary"]);
+    expect(title.audiences).toContain("Juvenile Fiction");
+  });
+
+  it("creates a searchable Sora-only row when the title is not already on a card", () => {
+    const payload = buildCollection([
+      rows([{ Title: "Harbor Lights", Author: "Ng, C", ISBN: "9787777777777", "Source Batch": "Apr 2026" }]),
+      {
+        filePath: "Sora-titles.xlsx",
+        label: "Sora-titles.xlsx",
+        kind: "sora",
+        rows: [
+          {
+            TitleID: 9,
+            Title: "Sora Only Adventure",
+            Creator: "Lee, Pat",
+            ISBN: "9781234567897",
+            Format: "Ebook",
+            "Content access levels": "Middle School",
+          },
+        ],
+      },
+    ]);
+    expect(payload.uniqueTitleCount).toBe(2);
+    const sora = payload.titles.find((title) => title.title === "Sora Only Adventure");
+    expect(sora?.posted).toBe(false);
+    expect(sora?.inCollection).toBe(true);
+    expect(sora?.formats.ebook).toBe(true);
+    expect(sora?.levels).toEqual(["Middle"]);
+    expect(sora?.batches).toEqual(["Sora 2026-09-16"]);
+  });
+
+  it("skips Magazine/NTC rows and still honors Crank/Glass posted exclusions", () => {
+    const payload = buildCollection(
+      [
+        rows([{ Title: "Impulse", Author: "Hopkins, Ellen", ISBN: "9781416903567", "Source Batch": "Nov 2025" }]),
+        {
+          filePath: "Sora-titles.xlsx",
+          label: "Sora-titles.xlsx",
+          kind: "sora",
+          rows: [
+            { TitleID: 1, Title: "Crank", Creator: "Hopkins, Ellen", ISBN: "9781416905080", Format: "Ebook", "Content access levels": "High School" },
+            { TitleID: 2, Title: "Hola Ninos", Creator: "", ISBN: "", Format: "Magazine", "Content access levels": "Elementary" },
+            { TitleID: 3, Title: "Weird NTC", Creator: "A", ISBN: "9781111111111", Format: "NTC" },
+          ],
+        },
+      ],
+      { exclusions: [{ title: "Crank", author: "Ellen Hopkins" }] },
+    );
+    expect(payload.titles.map((title) => title.title).sort()).toEqual(["Crank", "Impulse"]);
+    const crank = payload.titles.find((title) => title.title === "Crank");
+    expect(crank?.posted).toBe(false);
+    expect(crank?.inCollection).toBe(true);
+    expect(crank?.formats.ebook).toBe(true);
+    expect(payload.titles.find((title) => /hola/i.test(title.title))).toBeUndefined();
+  });
+
+  it("detects a Sora workbook and does not duplicate a matching posted title", () => {
+    const dir = mkdtempSync(join(tmpdir(), "misd-sora-"));
+    const postedFile = join(dir, "posted.xlsx");
+    const soraFile = join(dir, "Sora-titles.xlsx");
+    const postedSheet = XLSX.utils.json_to_sheet([
+      { Title: "Harbor Lights", Author: "Ng, C", ISBN: "9787777777777", "Source Batch": "Apr 2026" },
+    ]);
+    const postedWb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(postedWb, postedSheet, "Master List");
+    XLSX.writeFile(postedWb, postedFile);
+
+    const soraSheet = XLSX.utils.json_to_sheet([
+      {
+        TitleID: 10,
+        Title: "Harbor Lights",
+        Creator: "Ng, C",
+        ISBN: "9788888888888",
+        Format: "Ebook",
+        "Audience/Rating": "Young Adult Fiction",
+        "Content access levels": "High School",
+        Owned: 1,
+        Subscription: "No",
+      },
+      {
+        TitleID: 11,
+        Title: "Sora Solo",
+        Creator: "Solo, A",
+        ISBN: "9789999999999",
+        Format: "Audiobook",
+        "Content access levels": "Elementary",
+        Owned: 1,
+        Subscription: "No",
+      },
+      {
+        TitleID: 12,
+        Title: "Skip Mag",
+        Creator: "",
+        ISBN: "",
+        Format: "Magazine",
+        "Content access levels": "Elementary",
+        Owned: "Subscription",
+        Subscription: "Yes",
+      },
+    ]);
+    const soraWb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(soraWb, soraSheet, "Title status & usage 2026-09-16");
+    XLSX.writeFile(soraWb, soraFile);
+
+    const catalog = buildCatalogFromFiles([postedFile, soraFile]);
+    expect(catalog.collection.uniqueTitleCount).toBe(2);
+    const harbor = catalog.collection.titles.find((title) => title.title === "Harbor Lights");
+    expect(harbor?.isbnDigits).toEqual(expect.arrayContaining(["9787777777777", "9788888888888"]));
+    expect(harbor?.formats.ebook).toBe(true);
+    expect(harbor?.inCollection).toBe(true);
+    const solo = catalog.collection.titles.find((title) => title.title === "Sora Solo");
+    expect(solo?.formats.audio).toBe(true);
+    expect(solo?.posted).toBe(false);
   });
 });

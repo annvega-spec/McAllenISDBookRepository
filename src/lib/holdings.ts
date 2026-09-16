@@ -68,7 +68,7 @@ export function hydrateHolding(index: HoldingsIndex, rowIndex: number): TitleRec
     levels: [],
     audiences: [],
     editions: [],
-    formats: { book: Boolean(format & 1), ebook: Boolean(format & 2), audio: false },
+    formats: { book: Boolean(format & 1), ebook: Boolean(format & 2), audio: Boolean(format & 4) },
     posted: false,
     inCollection: true,
     possibleDuplicate: false,

@@ -4,6 +4,7 @@ import type { HoldingsIndex } from "./holdings";
 import { lookupHoldingIsbn, searchHoldingsTokens } from "./holdings";
 import { isbnQueryDigits, looksLikeIsbnQuery } from "./isbn";
 import {
+  authorsCompatible,
   diceCoefficient,
   isbnDigits,
   levenshtein,
@@ -98,6 +99,18 @@ function titleScore(query: string, title: TitleRecord): { score: number; reason:
   return { score, reason: score >= 0.9 ? "title" : "fuzzy" };
 }
 
+function titledCardForHolding(pool: TitleRecord[], holding: TitleRecord): TitleRecord | undefined {
+  const isbnHit = pool.find((title) => title.isbnDigits.some((isbn) => holding.isbnDigits.includes(isbn)));
+  if (isbnHit) return isbnHit;
+  const holdingTitle = normalizeTitle(holding.title || "");
+  if (!holdingTitle) return undefined;
+  return pool.find((title) => {
+    const titleKeyValue = normalizeTitle(title.title || "");
+    if (!titleKeyValue || titleKeyValue !== holdingTitle) return false;
+    return title.authors.some((author) => holding.authors.some((other) => authorsCompatible(author, other)));
+  });
+}
+
 export type SearchOptions = {
   limit?: number;
   minScore?: number;
@@ -137,7 +150,7 @@ export function searchTitles(
     if (holdingsIndex && digits.length >= 10) {
       const holding = lookupHoldingIsbn(holdingsIndex, digits);
       if (holding) {
-        const titled = pool.find((title) => title.isbnDigits.includes(holding.isbnDigits[0]) || holding.isbnDigits.some((isbn) => title.isbnDigits.includes(isbn)));
+        const titled = titledCardForHolding(pool, holding);
         if (titled) return [{ title: mergeTitleRecords(titled, holding), score: ISBN_MATCH, reason: "isbn" }];
         return [{ title: holding, score: ISBN_MATCH, reason: "isbn" }];
       }
@@ -157,8 +170,15 @@ export function searchTitles(
     const holdingsHits = searchHoldingsTokens(holdingsIndex, trimmed, 12);
     const seen = new Set(scored.map((item) => titleGroupKey(item.title)));
     for (const title of holdingsHits) {
-      const isbnHit = scored.find((item) => item.title.isbnDigits.some((isbn) => title.isbnDigits.includes(isbn)));
-      if (isbnHit) continue;
+      const existing = scored.find((item) => {
+        if (item.title.isbnDigits.some((isbn) => title.isbnDigits.includes(isbn))) return true;
+        const groupKey = titleGroupKey(title);
+        return groupKey === titleGroupKey(item.title) && !groupKey.startsWith("isbn:");
+      });
+      if (existing) {
+        existing.title = mergeTitleRecords(existing.title, title);
+        continue;
+      }
       const groupKey = titleGroupKey(title);
       if (seen.has(groupKey) && !groupKey.startsWith("isbn:")) continue;
       const { score, reason } = titleScore(trimmed, title);

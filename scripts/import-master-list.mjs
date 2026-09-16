@@ -61,12 +61,12 @@ if (collection.stats.skippedExcludedRows) {
     `Skipped ${collection.stats.skippedExcludedRows} excluded posted title row${collection.stats.skippedExcludedRows === 1 ? "" : "s"}`,
   );
 }
-console.log(`Unique posted titles: ${collection.uniqueTitleCount}`);
+console.log(`Unique titles: ${collection.uniqueTitleCount}`);
 console.log(`Posted periods: ${collection.batches.join(", ")}`);
 console.log(`Levels: ${collection.levels.join(", ")}`);
 if (collection.stats.holdingsUniqueIsbns) {
   console.log(
-    `Follett holdings: ${collection.stats.holdingsRows.toLocaleString()} Book/eBook rows with ISBN → ${collection.stats.holdingsUniqueIsbns.toLocaleString()} unique ISBNs (${collection.stats.holdingsLinkedToPosted.toLocaleString()} already on a posted title, ${collection.stats.holdingsOnly.toLocaleString()} holdings-only)`,
+    `Follett holdings: ${collection.stats.holdingsRows.toLocaleString()} Book/eBook/Sound/Recording rows with ISBN → ${collection.stats.holdingsUniqueIsbns.toLocaleString()} unique ISBNs (${collection.stats.holdingsLinkedToPosted.toLocaleString()} already on a posted title, ${collection.stats.holdingsOnly.toLocaleString()} holdings-only)`,
   );
 }
 if (extraCount) {

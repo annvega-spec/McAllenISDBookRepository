@@ -143,9 +143,9 @@ function Desk({
         ? "HAVE IT / DON'T HAVE IT — title, author, or ISBN. Follett holdings without a title are still found by ISBN or author."
         : classified.match
           ? classified.match.title.inCollection && classified.match.title.posted !== false
-            ? "HAVE IT — in the Follett collection and posted for review."
+            ? "HAVE IT — in the collection and posted for review."
             : classified.match.title.inCollection
-              ? "HAVE IT — in the Follett collection."
+              ? "HAVE IT — in the collection."
               : "HAVE IT — posted for HB 900 / SB 13 review."
           : showNoMatch
             ? "DON'T HAVE IT — no posted title or district holding matched this search."

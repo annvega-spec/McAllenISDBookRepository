@@ -3,7 +3,9 @@
  * grouped collection JSON the desk searches.
  *
  * Follett Destiny district holdings are compacted separately: unique ISBNs
- * with interned author/series strings, then linked onto posted titles by ISBN.
+ * with interned author/series strings, then linked onto posted titles by ISBN
+ * (and, for Sound/Recording audiobooks, by series title + author when a titled
+ * card already exists). Format bits: Book=1, eBook=2, Audio=4.
  */
 
 import { createHash } from "node:crypto";
@@ -52,6 +54,7 @@ const LEVEL_ORDER = ["Elementary", "Middle", "High", "Milam Book Vending Machine
 const FOLLETT_BATCH = "Follett 9.16.26";
 const ALL_CAMPUSES_BATCH = "All Campuses";
 const EBOOK_ORDER_BATCH = "eBook order";
+const SORA_BATCH = "Sora 2026-09-16";
 
 const HEADER_ALIASES = {
   title: "Title",
@@ -59,6 +62,7 @@ const HEADER_ALIASES = {
   author: "Author",
   authors: "Author",
   authorname: "Author",
+  creator: "Author",
   sourcebatch: "Source Batch",
   batch: "Source Batch",
   posted: "Source Batch",
@@ -84,6 +88,7 @@ const HEADER_ALIASES = {
   possibleduplicate: "Possible Duplicate",
   duplicate: "Possible Duplicate",
   audience: "Audience",
+  audiencerating: "Audience",
   booklist: "Booklist",
   kirkus: "Kirkus",
   pw: "PW",
@@ -96,6 +101,11 @@ const HEADER_ALIASES = {
   materialtype: "Material Type",
   seriestitle: "Series Title",
   follettebook: "Follett eBook",
+  titleid: "TitleID",
+  contentaccesslevels: "Level",
+  owned: "Owned",
+  subscription: "Subscription",
+  format: "Format",
 };
 
 export function cell(value) {
@@ -109,6 +119,8 @@ const ARTICLES = new Set(["a", "an", "the"]);
 export function titleKey(title) {
   const stripped = cell(title)
     .toLowerCase()
+    .replace(/\s*[\(\[]\s*(un)?abridged\s*[\)\]]/gi, " ")
+    .replace(/\s+(un)?abridged\s*$/i, "")
     .replace(/[&+]/g, " and ")
     .replace(/[^a-z0-9\s]/gi, " ")
     .trim()
@@ -134,6 +146,31 @@ export function authorsMatch(rowAuthor, exclusionAuthor) {
   if (!need.length) return false;
   const have = new Set(authorTokens(rowAuthor));
   return need.every((token) => have.has(token));
+}
+
+/** Either author token set is a subset of the other (handles extra illustrators). */
+export function authorsCompatible(left, right) {
+  const a = new Set(authorTokens(left));
+  const b = new Set(authorTokens(right));
+  if (!a.size || !b.size) return false;
+  const aInB = [...a].every((token) => b.has(token));
+  const bInA = [...b].every((token) => a.has(token));
+  return aInB || bInA;
+}
+
+export const FOLLETT_FORMAT = { book: 1, ebook: 2, audio: 4 };
+const FOLLETT_MATERIALS = new Set(["Book", "eBook", "Sound", "Recording"]);
+
+export function isFollettMaterial(material) {
+  return FOLLETT_MATERIALS.has(cell(material));
+}
+
+export function follettFormatBit(material) {
+  const mt = cell(material);
+  if (mt === "eBook") return FOLLETT_FORMAT.ebook;
+  if (mt === "Sound" || mt === "Recording") return FOLLETT_FORMAT.audio;
+  if (mt === "Book") return FOLLETT_FORMAT.book;
+  return 0;
 }
 
 export function loadPostedExclusions(filePath) {
@@ -284,17 +321,36 @@ export function normalizeLevel(level) {
 }
 
 export function isHoldingsBatch(label) {
-  return /^follett\b/i.test(cell(label));
+  return /^(follett|sora)\b/i.test(cell(label));
+}
+
+export function cleanSoraTitle(title) {
+  return cell(title)
+    .replace(/\s*[\(\[]\s*(un)?abridged\s*[\)\]]\s*$/i, "")
+    .replace(/\s+(un)?abridged\s*$/i, "")
+    .trim();
+}
+
+function soraLevel(level) {
+  const v = cell(level);
+  if (!v || /staff/i.test(v)) return "";
+  return normalizeLevel(v);
 }
 
 function pickDisplayTitle(counts) {
   let best = "";
   let bestCount = -1;
+  let bestPenalty = 99;
   for (const [title, count] of counts) {
     if (!title) continue;
-    if (count > bestCount || (count === bestCount && title.length > best.length)) {
+    const penalty = /\((un)?abridged\)/i.test(title) ? 1 : 0;
+    if (
+      penalty < bestPenalty ||
+      (penalty === bestPenalty && (count > bestCount || (count === bestCount && title.length > best.length)))
+    ) {
       best = title;
       bestCount = count;
+      bestPenalty = penalty;
     }
   }
   return best;
@@ -305,6 +361,7 @@ function emptyGroup(key) {
     key,
     titleKeys: new Set([key]),
     titleCounts: new Map(),
+    postedTitleCounts: new Map(),
     authors: [],
     isbnMap: new Map(),
     batches: new Set(),
@@ -334,7 +391,12 @@ function emptyGroup(key) {
 function addRowToGroup(group, row, sourceFile) {
   const title = cell(row.Title);
   group.rowCount += 1;
-  if (title) group.titleCounts.set(title, (group.titleCounts.get(title) || 0) + 1);
+  if (title) {
+    group.titleCounts.set(title, (group.titleCounts.get(title) || 0) + 1);
+    if (row._presence !== "holdings") {
+      group.postedTitleCounts.set(title, (group.postedTitleCounts.get(title) || 0) + 1);
+    }
+  }
   group.titleKeys.add(titleKey(title) || group.key);
   group.authors.push(cell(row.Author));
   if (sourceFile) group.sourceFiles.add(sourceFile);
@@ -379,6 +441,9 @@ function mergeGroupInto(target, source) {
   for (const key of source.titleKeys) target.titleKeys.add(key);
   for (const [title, count] of source.titleCounts) {
     target.titleCounts.set(title, (target.titleCounts.get(title) || 0) + count);
+  }
+  for (const [title, count] of source.postedTitleCounts || []) {
+    target.postedTitleCounts.set(title, (target.postedTitleCounts.get(title) || 0) + count);
   }
   target.authors.push(...source.authors);
   for (const [digits, display] of source.isbnMap) {
@@ -437,7 +502,7 @@ function mergeGroupsBySharedIsbn(groups) {
 
   const byTitle = new Map();
   for (const group of merged.values()) {
-    const display = pickDisplayTitle(group.titleCounts);
+    const display = pickDisplayTitle(group.postedTitleCounts?.size ? group.postedTitleCounts : group.titleCounts);
     const nextKey = titleKey(display) || group.key;
     if (group.titleCounts.size > 1) group.possibleDuplicate = true;
     if (!byTitle.has(nextKey)) {
@@ -481,7 +546,7 @@ function finalizeGroups(groups, sourceFiles) {
         const values = [...g.reviews[key]];
         if (values.length) reviews[key] = values;
       }
-      const title = pickDisplayTitle(g.titleCounts);
+      const title = pickDisplayTitle(g.postedTitleCounts?.size ? g.postedTitleCounts : g.titleCounts);
       if (g.titleCounts.size > 1) g.possibleDuplicate = true;
       const id = createHash("sha1").update(g.key).digest("hex").slice(0, 12);
       const postedBatches = sortBatches([...g.postedBatches]);
@@ -544,6 +609,9 @@ export function detectSourceKind(filePath, sheet, columns = []) {
   if (cols.has("materialtype") && cols.has("isbn") && cols.has("seriestitle") && !cols.has("title")) {
     return "follett";
   }
+  if (name.includes("sora") || sheetName.includes("title status") || (cols.has("titleid") && cols.has("format") && cols.has("owned") && cols.has("title"))) {
+    return "sora";
+  }
   if (name.startsWith("ebook-list") || (cols.has("qty") && cols.has("edition") && cols.has("title") && cols.has("isbn"))) {
     return "ebook-order";
   }
@@ -567,7 +635,16 @@ function applySourceHints(row, kind) {
     const mt = cell(row["Material Type"]);
     if (mt === "Book") row.Book = true;
     if (mt === "eBook") row.eBook = true;
+    if (mt === "Sound" || mt === "Recording") row.Audio = true;
     if (!cell(row.Title) && cell(row["Series Title"])) row.Title = cell(row["Series Title"]);
+    row._presence = "holdings";
+  } else if (kind === "sora") {
+    if (!cell(row["Source Batch"])) row["Source Batch"] = SORA_BATCH;
+    if (cell(row.Title)) row.Title = cleanSoraTitle(row.Title);
+    row.Level = soraLevel(row.Level);
+    const fmt = cell(row.Format).toLowerCase();
+    if (fmt === "ebook") row.eBook = true;
+    if (fmt === "audiobook") row.Audio = true;
     row._presence = "holdings";
   } else {
     row._presence = row._presence || "posted";
@@ -578,6 +655,9 @@ function applySourceHints(row, kind) {
 function preferredSheetName(sheetNames, kind) {
   if (kind === "follett") {
     return sheetNames.find((name) => /district report/i.test(name)) || sheetNames[0];
+  }
+  if (kind === "sora") {
+    return sheetNames.find((name) => /title status/i.test(name)) || sheetNames[0];
   }
   if (kind === "all-campuses") {
     return sheetNames.find((name) => /all campuses/i.test(name)) || sheetNames[0];
@@ -650,8 +730,12 @@ export function buildCollection(sources, { exclusions = [] } = {}) {
     sourceFiles.push(label);
     for (const raw of source.rows) {
       const row = applySourceHints(canonicalizeRow(raw), kind);
+      if (kind === "sora") {
+        const fmt = cell(row.Format).toLowerCase();
+        if (fmt !== "ebook" && fmt !== "audiobook") continue;
+      }
       const material = cell(row["Material Type"]);
-      if (material && material !== "Book" && material !== "eBook") continue;
+      if (material && !isFollettMaterial(material)) continue;
       const title = cell(row.Title);
       const isbns = collectIsbns(row);
       if (!title && !isbns.size) continue;
@@ -691,7 +775,7 @@ export function ingestFollettRows(rows, { batch = FOLLETT_BATCH } = {}) {
   for (const raw of rows) {
     const row = canonicalizeRow(raw);
     const mt = cell(row["Material Type"]);
-    if (mt !== "Book" && mt !== "eBook") {
+    if (!isFollettMaterial(mt)) {
       skippedType += 1;
       continue;
     }
@@ -715,7 +799,7 @@ export function ingestFollettRows(rows, { batch = FOLLETT_BATCH } = {}) {
       byIsbn.set(isbn13, rec);
     }
     rec.rowCount += 1;
-    rec.format |= mt === "eBook" ? 2 : 1;
+    rec.format |= follettFormatBit(mt);
     if (!rec.author) rec.author = cell(row.Author);
     if (!rec.series) rec.series = cell(row["Series Title"]);
     if (!rec.isbn10 && parsed[0].isbn10) rec.isbn10 = parsed[0].isbn10;
@@ -739,7 +823,7 @@ export function compactHoldings(records, { batch = FOLLETT_BATCH } = {}) {
       Number(rec.isbn13),
       internString(authors, rec.author),
       internString(series, rec.series),
-      rec.format || 1,
+      rec.format || FOLLETT_FORMAT.book,
     ]);
   }
   rows.sort((a, b) => a[0] - b[0]);
@@ -750,6 +834,55 @@ export function compactHoldings(records, { batch = FOLLETT_BATCH } = {}) {
     s: [...series.keys()],
     r: rows,
   };
+}
+
+function unionHoldingIsbn(hit, rec) {
+  if (rec.isbn10 && !hit.isbnDigits.includes(rec.isbn10)) {
+    hit.isbnDigits.push(rec.isbn10);
+    hit.isbns.push(rec.isbn10);
+  }
+  if (rec.isbn13 && !hit.isbnDigits.includes(rec.isbn13)) {
+    hit.isbnDigits.push(rec.isbn13);
+    hit.isbns.push(rec.isbn13);
+  }
+}
+
+function applyHoldingToTitle(hit, rec, batch) {
+  hit.inCollection = true;
+  if (!hit.holdingsBatches.includes(batch)) hit.holdingsBatches.push(batch);
+  if (!hit.batches.includes(batch)) hit.batches.push(batch);
+  if (rec.format & FOLLETT_FORMAT.book) hit.formats.book = true;
+  if (rec.format & FOLLETT_FORMAT.ebook) hit.formats.ebook = true;
+  if (rec.format & FOLLETT_FORMAT.audio) hit.formats.audio = true;
+  unionHoldingIsbn(hit, rec);
+  if (rec.author && !hit.authors.length) hit.authors.push(rec.author);
+  if (hit.titleUnknown && rec.series) {
+    hit.title = rec.series;
+    hit.titleUnknown = false;
+  }
+  hit.rowCount += rec.rowCount;
+}
+
+function indexTitledCards(titles) {
+  const byKey = new Map();
+  for (const title of titles) {
+    if (title.titleUnknown || !cell(title.title)) continue;
+    const key = titleKey(title.title);
+    if (!key) continue;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(title);
+  }
+  return byKey;
+}
+
+function findTitledCardForHolding(rec, titledByKey) {
+  const key = titleKey(rec.series);
+  if (!key || !cell(rec.author)) return null;
+  const candidates = titledByKey.get(key);
+  if (!candidates?.length) return null;
+  return (
+    candidates.find((title) => title.authors.some((author) => authorsCompatible(author, rec.author))) || null
+  );
 }
 
 export function attachHoldingsToCollection(payload, ingested) {
@@ -773,25 +906,26 @@ export function attachHoldingsToCollection(payload, ingested) {
       continue;
     }
     linked += 1;
-    hit.inCollection = true;
-    if (!hit.holdingsBatches.includes(ingested.batch)) hit.holdingsBatches.push(ingested.batch);
-    if (!hit.batches.includes(ingested.batch)) hit.batches.push(ingested.batch);
-    if (rec.format & 1) hit.formats.book = true;
-    if (rec.format & 2) hit.formats.ebook = true;
-    if (rec.isbn10 && !hit.isbnDigits.includes(rec.isbn10)) {
-      hit.isbnDigits.push(rec.isbn10);
-      hit.isbns.push(rec.isbn10);
+    applyHoldingToTitle(hit, rec, ingested.batch);
+    for (const digits of [rec.isbn13, rec.isbn10]) {
+      if (digits) byDigits.set(digits, hit);
     }
-    if (rec.isbn13 && !hit.isbnDigits.includes(rec.isbn13)) {
-      hit.isbnDigits.push(rec.isbn13);
-      hit.isbns.push(rec.isbn13);
+  }
+
+  const titledByKey = indexTitledCards(payload.titles);
+  const leftover = [];
+  for (const rec of remaining) {
+    const audioOnlyAttach = Boolean(rec.format & FOLLETT_FORMAT.audio);
+    const hit = audioOnlyAttach ? findTitledCardForHolding(rec, titledByKey) : null;
+    if (!hit) {
+      leftover.push(rec);
+      continue;
     }
-    if (rec.author && !hit.authors.length) hit.authors.push(rec.author);
-    if (hit.titleUnknown && rec.series) {
-      hit.title = rec.series;
-      hit.titleUnknown = false;
+    linked += 1;
+    applyHoldingToTitle(hit, rec, ingested.batch);
+    for (const digits of [rec.isbn13, rec.isbn10]) {
+      if (digits) byDigits.set(digits, hit);
     }
-    hit.rowCount += rec.rowCount;
   }
 
   for (const title of payload.titles) {
@@ -802,7 +936,7 @@ export function attachHoldingsToCollection(payload, ingested) {
     title.isbns = title.isbnDigits.slice();
   }
 
-  const compact = compactHoldings(remaining, { batch: ingested.batch });
+  const compact = compactHoldings(leftover, { batch: ingested.batch });
   payload.stats.holdingsRows = ingested.accepted;
   payload.stats.holdingsUniqueIsbns = ingested.byIsbn.size;
   payload.stats.holdingsLinkedToPosted = linked;
@@ -842,4 +976,4 @@ export function buildCatalogFromFiles(filePaths, { relativeTo, exclusions = [] }
   return { collection, holdings };
 }
 
-export { FOLLETT_BATCH, ALL_CAMPUSES_BATCH, EBOOK_ORDER_BATCH };
+export { FOLLETT_BATCH, ALL_CAMPUSES_BATCH, EBOOK_ORDER_BATCH, SORA_BATCH };

@@ -22,7 +22,7 @@ describe("collection import", () => {
     expect(data.uniqueTitleCount).toBeGreaterThan(5000);
     expect(data.titles).toHaveLength(data.uniqueTitleCount);
     expect(data.batches).toEqual(
-      expect.arrayContaining(["Sep 2025", "Oct 2025", "Nov 2025", "Jan 2026", "2026-2027", "All Campuses", "eBook order"]),
+      expect.arrayContaining(["Sep 2025", "Oct 2025", "Nov 2025", "Jan 2026", "2026-2027", "All Campuses", "eBook order", "Sora 2026-09-16"]),
     );
   });
 
@@ -56,6 +56,7 @@ describe("title search", () => {
 
   it("is tolerant of articles, case, and punctuation", () => {
     expect(normalizeTitle("The 101 Dalmatians!")).toBe("101 dalmatians");
+    expect(normalizeTitle("13 Little Blue Envelopes (unabridged)")).toBe("13 little blue envelopes");
     const results = searchTitles(data, "the 101 dalmatians!", { holdingsIndex });
     expect(classifySearch(results).match?.title.title).toBe("101 Dalmatians");
   });
@@ -145,5 +146,72 @@ describe("Ellen Hopkins posted exclusions", () => {
     const slippers = classifySearch(searchTitles(data, "Glass slippers", { holdingsIndex })).match?.title;
     expect(slippers?.title).toBe("Glass slippers");
     expect(slippers?.posted).not.toBe(false);
+  });
+});
+
+describe("Follett Sound/Recording audiobooks", () => {
+  it("attaches an audiobook ISBN onto the existing titled Last Kids on Earth card", () => {
+    const results = searchTitles(data, "The Last Kids on Earth", { holdingsIndex });
+    expect(results.filter((item) => normalizeTitle(item.title.title) === "last kids on earth")).toHaveLength(1);
+    const title = classifySearch(results).match?.title;
+    expect(title?.title).toBe("The Last Kids on Earth");
+    expect(title?.formats.audio).toBe(true);
+    expect(title?.formats.ebook).toBe(true);
+    expect(title?.isbnDigits).toContain("9780525495581");
+    expect(title?.isbnDigits).toContain("9780425287569");
+    expect(title?.inCollection).toBe(true);
+    expect(title?.posted).not.toBe(false);
+
+    const byIsbn = classifySearch(searchTitles(data, "9780525495581", { holdingsIndex })).match?.title;
+    expect(byIsbn?.title).toBe("The Last Kids on Earth");
+    expect(byIsbn?.formats.audio).toBe(true);
+    expect(byIsbn?.isbnDigits).toEqual(expect.arrayContaining(["9780425287569", "9780525495581"]));
+  });
+
+  it("does not dump series audiobooks onto a different Last Kids volume", () => {
+    const results = searchTitles(data, "Last Kids on Earth and the Cosmic Beyond", { holdingsIndex });
+    const title = classifySearch(results).match?.title;
+    expect(title?.title).toBe("Last Kids on Earth and the Cosmic Beyond");
+    expect(title?.isbnDigits).not.toContain("9780525495581");
+  });
+
+  it("returns In collection for an audio-only Destiny ISBN with no book/ebook counterpart", () => {
+    expect(holdingsIndex).not.toBeNull();
+    const results = searchTitles(data, "9780807210260", { holdingsIndex });
+    const title = classifySearch(results).match?.title;
+    expect(title?.inCollection).toBe(true);
+    expect(title?.posted).toBe(false);
+    expect(title?.formats.audio).toBe(true);
+    expect(title?.formats.book).toBe(false);
+    expect(title?.isbnDigits).toContain("9780807210260");
+  });
+});
+
+describe("Sora Ebook/Audiobook import", () => {
+  it("attaches a Sora ISBN onto an existing titled Last Kids volume instead of a second card", () => {
+    const results = searchTitles(data, "Last Kids on Earth and the Cosmic Beyond", { holdingsIndex });
+    expect(results.filter((item) => normalizeTitle(item.title.title) === "last kids on earth and the cosmic beyond")).toHaveLength(1);
+    const title = classifySearch(results).match?.title;
+    expect(title?.title).toBe("Last Kids on Earth and the Cosmic Beyond");
+    expect(title?.posted).not.toBe(false);
+    expect(title?.inCollection).toBe(true);
+    expect(title?.formats.ebook).toBe(true);
+    expect(title?.batches).toEqual(expect.arrayContaining(["All Campuses", "Sora 2026-09-16"]));
+    expect(title?.isbnDigits).toContain("9780425292082");
+    expect(title?.isbnDigits).toContain("9780425292099");
+
+    const byIsbn = classifySearch(searchTitles(data, "9780425292099", { holdingsIndex })).match?.title;
+    expect(byIsbn?.title).toBe("Last Kids on Earth and the Cosmic Beyond");
+    expect(byIsbn?.isbnDigits).toEqual(expect.arrayContaining(["9780425292082", "9780425292099"]));
+  });
+
+  it("returns HAVE IT / In collection for a Sora-only title that has no posted book card", () => {
+    const results = searchTitles(data, "9780547249643", { holdingsIndex });
+    const title = classifySearch(results).match?.title;
+    expect(title?.title).toBe("1984");
+    expect(title?.inCollection).toBe(true);
+    expect(title?.posted).toBe(false);
+    expect(title?.formats.ebook).toBe(true);
+    expect(title?.batches).toEqual(expect.arrayContaining(["Sora 2026-09-16"]));
   });
 });
