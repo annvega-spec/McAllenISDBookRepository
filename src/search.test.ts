@@ -176,34 +176,34 @@ function isMargaretAtwood(authors: string[]): boolean {
   return tokens.has("margaret") && tokens.has("atwood");
 }
 
-describe("Margaret Atwood posted exclusions", () => {
-  it("does not list The Handmaid's Tale as posted for community review", () => {
-    const postedHandmaid = data.titles.filter(
-      (title) =>
-        normalizeTitle(title.title) === "handmaid s tale" &&
-        isMargaretAtwood(title.authors) &&
-        title.posted !== false,
-    );
-    expect(postedHandmaid).toHaveLength(0);
+describe("Margaret Atwood desk exclusions", () => {
+  function isHandmaidCard(title: string): boolean {
+    const key = normalizeTitle(title);
+    return key === "handmaid s tale" || key.startsWith("handmaid s tale ");
+  }
 
-    for (const query of ["Handmaid", "Handmaid's Tale", "The Handmaid's Tale", "Handmaid Atwood"]) {
+  it("does not return The Handmaid's Tale anywhere on the desk", () => {
+    expect(data.titles.filter((title) => isHandmaidCard(title.title))).toHaveLength(0);
+    expect(
+      data.titles.filter(
+        (title) =>
+          normalizeTitle(title.title) === "handmaid s tale" && isMargaretAtwood(title.authors),
+      ),
+    ).toHaveLength(0);
+
+    for (const query of ["Handmaid", "Handmaid's Tale", "The Handmaid's Tale"]) {
       const results = searchTitles(data, query, { holdingsIndex });
-      for (const item of results) {
-        if (normalizeTitle(item.title.title) === "handmaid s tale" && isMargaretAtwood(item.title.authors)) {
-          expect(item.title.posted, query).toBe(false);
-        }
-      }
-      const match = classifySearch(results).match?.title;
-      if (match && normalizeTitle(match.title) === "handmaid s tale" && isMargaretAtwood(match.authors)) {
-        expect(match.posted).toBe(false);
+      expect(results.filter((item) => isHandmaidCard(item.title.title)), query).toHaveLength(0);
+      const classified = classifySearch(results);
+      if (classified.match) {
+        expect(isHandmaidCard(classified.match.title.title), query).toBe(false);
       }
     }
 
-    const tale = classifySearch(searchTitles(data, "The Handmaid's Tale", { holdingsIndex })).match?.title;
-    expect(tale).toBeTruthy();
-    expect(normalizeTitle(tale!.title)).toBe("handmaid s tale");
-    expect(tale!.posted).toBe(false);
-    expect(tale!.inCollection).toBe(true);
+    for (const isbn of ["9780385490818", "9780547345666", "9781510537033", "9781587656217"]) {
+      const match = classifySearch(searchTitles(data, isbn, { holdingsIndex })).match?.title;
+      expect(match, isbn).toBeUndefined();
+    }
   });
 
   it("leaves other Margaret Atwood titles searchable", () => {
@@ -213,6 +213,7 @@ describe("Margaret Atwood posted exclusions", () => {
     expect(testaments).toBeTruthy();
     const match = classifySearch(searchTitles(data, "The Testaments", { holdingsIndex })).match?.title;
     expect(match && /testament/i.test(match.title)).toBe(true);
+    expect(isMargaretAtwood(match?.authors || [])).toBe(true);
   });
 });
 
