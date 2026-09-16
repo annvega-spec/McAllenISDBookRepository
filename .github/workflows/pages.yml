@@ -31,10 +31,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Import posted-title spreadsheets
+      - name: Import posted-title and Follett holdings spreadsheets
         run: npm run import
         env:
           NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Run tests against the imported lists
+        run: npm test
 
       - name: Build the static desk
         run: npm run build

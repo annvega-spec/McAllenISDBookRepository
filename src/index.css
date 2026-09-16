@@ -513,6 +513,10 @@ body::before {
   font-size: 0.75rem;
 }
 
+.no-match-kicker-pending {
+  color: var(--gold-2);
+}
+
 .no-match h2,
 .welcome h2,
 .results-head h2 {
