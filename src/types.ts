@@ -52,6 +52,7 @@ export type CollectionData = {
     rowsByLevel: Record<string, number>;
     titlesByLevel: Record<string, number>;
     skippedDuplicateRows?: number;
+    skippedExcludedRows?: number;
     postedTitleCount?: number;
     inCollectionPostedCount?: number;
     holdingsRows?: number;
