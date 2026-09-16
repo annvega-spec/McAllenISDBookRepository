@@ -339,8 +339,63 @@ body::before {
   box-shadow: 0 0 0 4px rgba(216, 236, 192, 0.15);
 }
 
-.match-status {
+.match-kicker {
+  margin: 0;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
   color: var(--ok);
+  font-weight: 600;
+}
+
+.match-status-block {
+  display: grid;
+  gap: 2px;
+}
+
+.match-status {
+  color: var(--gold-2);
+  letter-spacing: 0.08em;
+}
+
+.presence-pills {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0;
+  margin: 0 0 0 8px;
+}
+
+.presence-pills li,
+.pill-holdings,
+.pill-posted {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+}
+
+.pill-holdings {
+  color: var(--ok);
+  border-color: rgba(216, 236, 192, 0.45);
+}
+
+.pill-posted {
+  color: var(--gold-2);
+  border-color: var(--gold);
+}
+
+.match-title-unknown {
+  font-style: italic;
+  color: var(--gold-2);
+}
+
+.unknown-title-note {
+  margin: 0 0 12px;
+  color: var(--muted);
+  max-width: 46rem;
 }
 
 .match-actions {

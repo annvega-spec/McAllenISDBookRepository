@@ -33,6 +33,8 @@ jobs:
 
       - name: Import posted-title spreadsheets
         run: npm run import
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Build the static desk
         run: npm run build

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { TitleRecord } from "../types";
+import { displayTitle, presenceOf, type TitleRecord } from "../types";
 
 const REVIEW_LABELS: Record<string, string> = {
   booklist: "Booklist",
@@ -16,6 +16,29 @@ type MatchCardProps = {
   onClose?: () => void;
 };
 
+function statusCopy(title: TitleRecord) {
+  const presence = presenceOf(title);
+  if (presence === "both") {
+    return {
+      kicker: "HAVE IT",
+      line: "In collection · Posted for HB 900 / SB 13 review",
+      className: "match-card match-both",
+    };
+  }
+  if (presence === "holdings") {
+    return {
+      kicker: "HAVE IT",
+      line: "In collection — not on the posted review list",
+      className: "match-card match-holdings",
+    };
+  }
+  return {
+    kicker: "HAVE IT",
+    line: "Posted for HB 900 / SB 13 review — not on the Follett district report",
+    className: "match-card match-posted",
+  };
+}
+
 export function MatchCard({ title, onClose }: MatchCardProps) {
   const formats = [
     title.formats.book ? "Book" : null,
@@ -24,12 +47,25 @@ export function MatchCard({ title, onClose }: MatchCardProps) {
   ].filter(Boolean) as string[];
 
   const reviewEntries = Object.entries(title.reviews).filter(([, values]) => values?.length);
+  const presence = presenceOf(title);
+  const copy = statusCopy(title);
+  const unknown = Boolean(title.titleUnknown || !title.title);
+  const postedBatches = title.postedBatches ?? (presence === "holdings" ? [] : title.batches);
+  const holdingsBatches = title.holdingsBatches ?? (title.inCollection ? title.batches.filter((batch) => /^follett/i.test(batch)) : []);
+  const isbnLabel = presence === "posted" ? `Approved ISBN${title.isbns.length === 1 ? "" : "s"}` : `ISBN${title.isbns.length === 1 ? "" : "s"}`;
 
   return (
-    <article className="match-card" aria-live="polite">
+    <article className={copy.className} aria-live="polite">
       <div className="match-ribbon">
         <span className="status-dot" aria-hidden="true" />
-        <p className="match-status">In collection · Posted for review</p>
+        <div className="match-status-block">
+          <p className="match-kicker">{copy.kicker}</p>
+          <p className="match-status">{copy.line}</p>
+        </div>
+        <ul className="presence-pills" aria-label="Record status">
+          {title.inCollection ? <li className="pill-holdings">In collection</li> : null}
+          {presence !== "holdings" ? <li className="pill-posted">Posted for review</li> : null}
+        </ul>
         <div className="match-actions no-print">
           <button type="button" className="text-btn" onClick={() => window.print()}>
             Print record
@@ -42,12 +78,17 @@ export function MatchCard({ title, onClose }: MatchCardProps) {
         </div>
       </div>
 
-      <h2 className="match-title">{title.title}</h2>
+      <h2 className={unknown ? "match-title match-title-unknown" : "match-title"}>{displayTitle(title)}</h2>
+      {unknown ? (
+        <p className="unknown-title-note">
+          No title is listed on this holdings row. Identify the item by ISBN and author — search still finds it.
+        </p>
+      ) : null}
       <p className="match-author">{title.authors.length ? title.authors.join("; ") : "Author not listed"}</p>
 
       <dl className="meta-grid">
         <div>
-          <dt>Approved ISBN{title.isbns.length === 1 ? "" : "s"}</dt>
+          <dt>{isbnLabel}</dt>
           <dd>
             {title.isbns.length ? (
               <ul className="isbn-list">
@@ -62,16 +103,30 @@ export function MatchCard({ title, onClose }: MatchCardProps) {
             )}
           </dd>
         </div>
-        <div>
-          <dt>Date{title.batches.length === 1 ? "" : "s"} posted</dt>
-          <dd>
-            <ul className="batch-pills">
-              {title.batches.map((batch) => (
-                <li key={batch}>{batch}</li>
-              ))}
-            </ul>
-          </dd>
-        </div>
+        {postedBatches.length ? (
+          <div>
+            <dt>Date{postedBatches.length === 1 ? "" : "s"} posted</dt>
+            <dd>
+              <ul className="batch-pills">
+                {postedBatches.map((batch) => (
+                  <li key={batch}>{batch}</li>
+                ))}
+              </ul>
+            </dd>
+          </div>
+        ) : null}
+        {holdingsBatches.length ? (
+          <div>
+            <dt>District holdings</dt>
+            <dd>
+              <ul className="batch-pills">
+                {holdingsBatches.map((batch) => (
+                  <li key={batch}>{batch}</li>
+                ))}
+              </ul>
+            </dd>
+          </div>
+        ) : null}
         <div>
           <dt>Level</dt>
           <dd>{title.levels.join(" · ") || "—"}</dd>
@@ -86,6 +141,12 @@ export function MatchCard({ title, onClose }: MatchCardProps) {
           <div>
             <dt>Format flags</dt>
             <dd>{formats.join(" · ")}</dd>
+          </div>
+        ) : null}
+        {title.editions?.length ? (
+          <div>
+            <dt>Edition</dt>
+            <dd>{title.editions.join(" · ")}</dd>
           </div>
         ) : null}
       </dl>
@@ -111,7 +172,7 @@ export function MatchCard({ title, onClose }: MatchCardProps) {
       ) : null}
 
       <p className="print-only print-foot">
-        McAllen ISD Collection Check · Titles posted for community review (HB 900 / SB 13)
+        McAllen ISD Collection Check · HAVE IT / DON&apos;T HAVE IT desk (HB 900 / SB 13 and Follett holdings)
       </p>
     </article>
   );
