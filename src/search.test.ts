@@ -108,6 +108,28 @@ describe("additional spreadsheets", () => {
       expect(title?.titleUnknown).toBe(true);
     }
   });
+
+  it("finds a previously ISBN-only Follett holding by Title/Subtitle and keeps one card", () => {
+    const results = searchTitles(data, "Christmas around the world", { holdingsIndex });
+    expect(results.filter((item) => normalizeTitle(item.title.title) === "christmas around the world")).toHaveLength(1);
+    const title = classifySearch(results).match?.title;
+    expect(title?.title).toBe("Christmas around the world");
+    expect(title?.inCollection).toBe(true);
+    expect(title?.posted).toBe(false);
+    expect(title?.isbnDigits).toContain("9780002251181");
+    expect(title?.isbnDigits.length).toBeGreaterThan(1);
+
+    const byIsbn = classifySearch(searchTitles(data, "9780002251181", { holdingsIndex })).match?.title;
+    expect(byIsbn?.title).toBe("Christmas around the world");
+    expect(byIsbn?.isbnDigits).toContain("9780002251181");
+  });
+
+  it("does not create duplicate cards for the same normalized Follett title", () => {
+    const keys = data.titles.map((title) => normalizeTitle(title.title)).filter(Boolean);
+    expect(new Set(keys).size).toBe(keys.length);
+    const results = searchTitles(data, "Henry and Beezus", { holdingsIndex });
+    expect(results.filter((item) => normalizeTitle(item.title.title) === "henry and beezus")).toHaveLength(1);
+  });
 });
 
 function isEllenHopkins(authors: string[]): boolean {
@@ -175,15 +197,16 @@ describe("Follett Sound/Recording audiobooks", () => {
     expect(title?.isbnDigits).not.toContain("9780525495581");
   });
 
-  it("returns In collection for an audio-only Destiny ISBN with no book/ebook counterpart", () => {
+  it("returns In collection for a Destiny audio ISBN, now titled and unioned onto that title card", () => {
     expect(holdingsIndex).not.toBeNull();
     const results = searchTitles(data, "9780807210260", { holdingsIndex });
     const title = classifySearch(results).match?.title;
     expect(title?.inCollection).toBe(true);
     expect(title?.posted).toBe(false);
     expect(title?.formats.audio).toBe(true);
-    expect(title?.formats.book).toBe(false);
+    expect(title?.title).toBe("Henry and Beezus");
     expect(title?.isbnDigits).toContain("9780807210260");
+    expect(title?.isbnDigits.length).toBeGreaterThan(1);
   });
 });
 

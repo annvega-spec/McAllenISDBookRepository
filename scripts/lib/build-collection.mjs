@@ -3,9 +3,11 @@
  * grouped collection JSON the desk searches.
  *
  * Follett Destiny district holdings are compacted separately: unique ISBNs
- * with interned author/series strings, then linked onto posted titles by ISBN
- * (and, for Sound/Recording audiobooks, by series title + author when a titled
- * card already exists). Format bits: Book=1, eBook=2, Audio=4.
+ * with interned author/title strings, then linked onto posted titles by ISBN
+ * or normalized Title/Subtitle. Leftover titled rows collapse to one compact
+ * card per title (union all ISBNs). Untitled Sound/Recording audiobooks still
+ * attach by series title + author when a titled card already exists.
+ * Format bits: Book=1, eBook=2, Audio=4.
  */
 
 import { createHash } from "node:crypto";
@@ -100,6 +102,7 @@ const HEADER_ALIASES = {
   qty: "Qty",
   materialtype: "Material Type",
   seriestitle: "Series Title",
+  titlesubtitle: "Title",
   follettebook: "Follett eBook",
   titleid: "TitleID",
   contentaccesslevels: "Level",
@@ -618,7 +621,7 @@ export function detectSourceKind(filePath, sheet, columns = []) {
   const sheetName = String(sheet || "").toLowerCase();
   const cols = new Set(columns.map(headerKey));
   if (name.includes("district-report") || sheetName.includes("district report")) return "follett";
-  if (cols.has("materialtype") && cols.has("isbn") && cols.has("seriestitle") && !cols.has("title")) {
+  if (cols.has("materialtype") && cols.has("isbn") && (cols.has("seriestitle") || cols.has("titlesubtitle") || cols.has("title"))) {
     return "follett";
   }
   if (name.includes("sora") || sheetName.includes("title status") || (cols.has("titleid") && cols.has("format") && cols.has("owned") && cols.has("title"))) {
@@ -648,6 +651,7 @@ function applySourceHints(row, kind) {
     if (mt === "Book") row.Book = true;
     if (mt === "eBook") row.eBook = true;
     if (mt === "Sound" || mt === "Recording") row.Audio = true;
+    if (!cell(row.Title) && cell(row["Title/Subtitle"])) row.Title = cell(row["Title/Subtitle"]);
     if (!cell(row.Title) && cell(row["Series Title"])) row.Title = cell(row["Series Title"]);
     row._presence = "holdings";
   } else if (kind === "sora") {
@@ -666,7 +670,11 @@ function applySourceHints(row, kind) {
 
 function preferredSheetName(sheetNames, kind) {
   if (kind === "follett") {
-    return sheetNames.find((name) => /district report/i.test(name)) || sheetNames[0];
+    return (
+      sheetNames.find((name) => /district report/i.test(name) && !/summary/i.test(name)) ||
+      sheetNames.find((name) => /district report/i.test(name)) ||
+      sheetNames[0]
+    );
   }
   if (kind === "sora") {
     return sheetNames.find((name) => /title status/i.test(name)) || sheetNames[0];
@@ -782,11 +790,16 @@ export function buildCollection(sources, { exclusions = [] } = {}) {
   return payload;
 }
 
+function follettDisplayTitle(row) {
+  return cell(row.Title) || cell(row["Title/Subtitle"]);
+}
+
 export function ingestFollettRows(rows, { batch = FOLLETT_BATCH } = {}) {
   const byIsbn = new Map();
   let accepted = 0;
   let skippedNoIsbn = 0;
   let skippedType = 0;
+  let titled = 0;
 
   for (const raw of rows) {
     const row = canonicalizeRow(raw);
@@ -802,13 +815,18 @@ export function ingestFollettRows(rows, { batch = FOLLETT_BATCH } = {}) {
       continue;
     }
     accepted += 1;
+    const title = follettDisplayTitle(row);
+    if (title) titled += 1;
     let rec = byIsbn.get(isbn13);
     if (!rec) {
       rec = {
         isbn13,
         isbn10: parsed[0].isbn10 || "",
         author: cell(row.Author),
+        title,
         series: cell(row["Series Title"]),
+        titleCounts: new Map(),
+        authors: [],
         format: 0,
         rowCount: 0,
       };
@@ -817,11 +835,14 @@ export function ingestFollettRows(rows, { batch = FOLLETT_BATCH } = {}) {
     rec.rowCount += 1;
     rec.format |= follettFormatBit(mt);
     if (!rec.author) rec.author = cell(row.Author);
+    if (cell(row.Author)) rec.authors.push(cell(row.Author));
+    if (!rec.title && title) rec.title = title;
+    if (title) rec.titleCounts.set(title, (rec.titleCounts.get(title) || 0) + 1);
     if (!rec.series) rec.series = cell(row["Series Title"]);
     if (!rec.isbn10 && parsed[0].isbn10) rec.isbn10 = parsed[0].isbn10;
   }
 
-  return { batch, byIsbn, accepted, skippedNoIsbn, skippedType };
+  return { batch, byIsbn, accepted, titled, skippedNoIsbn, skippedType };
 }
 
 function internString(map, value) {
@@ -830,25 +851,93 @@ function internString(map, value) {
   return map.get(s);
 }
 
+export function groupHoldingsByTitle(records) {
+  const titled = new Map();
+  const leftover = [];
+
+  for (const rec of records) {
+    const display = cell(rec.title);
+    const key = titleKey(display);
+    if (!key) {
+      leftover.push({ ...rec, extraIsbns: rec.extraIsbns || [] });
+      continue;
+    }
+    let group = titled.get(key);
+    if (!group) {
+      group = {
+        isbn13: rec.isbn13,
+        isbn10: rec.isbn10 || "",
+        extraIsbns: [],
+        isbnSet: new Set(),
+        author: rec.author || "",
+        authors: [...(rec.authors || [])],
+        title: display,
+        series: rec.series || "",
+        titleCounts: new Map(rec.titleCounts || []),
+        format: 0,
+        rowCount: 0,
+      };
+      titled.set(key, group);
+    }
+    group.rowCount += rec.rowCount || 1;
+    group.format |= rec.format || 0;
+    if (rec.authors?.length) group.authors.push(...rec.authors);
+    else if (rec.author) group.authors.push(rec.author);
+    if (display) group.titleCounts.set(display, (group.titleCounts.get(display) || 0) + (rec.rowCount || 1));
+    if (!group.series && rec.series) group.series = rec.series;
+    for (const isbn of [rec.isbn13, rec.isbn10, ...(rec.extraIsbns || [])]) {
+      if (!isbn || group.isbnSet.has(isbn)) continue;
+      group.isbnSet.add(isbn);
+    }
+  }
+
+  const grouped = [];
+  for (const group of titled.values()) {
+    const isbn13s = [...group.isbnSet].filter((isbn) => String(isbn).length === 13).sort(isbnSort);
+    const isbn10s = [...group.isbnSet].filter((isbn) => String(isbn).length === 10);
+    const primary = isbn13s[0] || [...group.isbnSet][0];
+    const extraIsbns = isbn13s.filter((isbn) => isbn !== primary);
+    grouped.push({
+      isbn13: primary,
+      isbn10: isbn10s[0] || "",
+      extraIsbns,
+      author: canonicalAuthors(group.authors).join("; ") || group.author,
+      title: pickDisplayTitle(group.titleCounts) || group.title,
+      series: group.series,
+      format: group.format,
+      rowCount: group.rowCount,
+    });
+  }
+
+  return [...grouped, ...leftover];
+}
+
 export function compactHoldings(records, { batch = FOLLETT_BATCH } = {}) {
+  const grouped = groupHoldingsByTitle(records);
   const authors = new Map([["", 0]]);
   const series = new Map([["", 0]]);
   const rows = [];
-  for (const rec of records) {
+  const extras = [];
+  for (const rec of grouped) {
     rows.push([
       Number(rec.isbn13),
       internString(authors, rec.author),
-      internString(series, rec.series),
+      internString(series, rec.title || rec.series),
       rec.format || FOLLETT_FORMAT.book,
     ]);
+    extras.push((rec.extraIsbns || []).map((isbn) => Number(isbn)).filter((n) => Number.isFinite(n)));
   }
-  rows.sort((a, b) => a[0] - b[0]);
+  const order = rows.map((_, i) => i).sort((a, b) => rows[a][0] - rows[b][0]);
+  const sortedRows = order.map((i) => rows[i]);
+  const sortedExtras = order.map((i) => extras[i]);
+  const hasExtras = sortedExtras.some((list) => list.length);
   return {
     b: batch,
-    n: rows.length,
+    n: sortedRows.length,
     a: [...authors.keys()],
     s: [...series.keys()],
-    r: rows,
+    r: sortedRows,
+    ...(hasExtras ? { x: sortedExtras } : {}),
   };
 }
 
@@ -863,6 +952,14 @@ function unionHoldingIsbn(hit, rec) {
   }
 }
 
+function unionAuthor(hit, author) {
+  const name = cell(author);
+  if (!name) return;
+  const key = name.toLowerCase().replace(/\s+/g, " ");
+  if (hit.authors.some((existing) => existing.toLowerCase().replace(/\s+/g, " ") === key)) return;
+  hit.authors.push(name);
+}
+
 function applyHoldingToTitle(hit, rec, batch) {
   hit.inCollection = true;
   if (!hit.holdingsBatches.includes(batch)) hit.holdingsBatches.push(batch);
@@ -871,8 +968,14 @@ function applyHoldingToTitle(hit, rec, batch) {
   if (rec.format & FOLLETT_FORMAT.ebook) hit.formats.ebook = true;
   if (rec.format & FOLLETT_FORMAT.audio) hit.formats.audio = true;
   unionHoldingIsbn(hit, rec);
-  if (rec.author && !hit.authors.length) hit.authors.push(rec.author);
-  if (hit.titleUnknown && rec.series) {
+  for (const isbn of rec.extraIsbns || []) {
+    unionHoldingIsbn(hit, { isbn13: String(isbn).length === 13 ? String(isbn) : "", isbn10: String(isbn).length === 10 ? String(isbn) : "" });
+  }
+  unionAuthor(hit, rec.author);
+  if (rec.title && (hit.titleUnknown || !hit.title)) {
+    hit.title = rec.title;
+    hit.titleUnknown = false;
+  } else if (hit.titleUnknown && rec.series) {
     hit.title = rec.series;
     hit.titleUnknown = false;
   }
@@ -892,6 +995,15 @@ function indexTitledCards(titles) {
 }
 
 function findTitledCardForHolding(rec, titledByKey) {
+  const realTitle = cell(rec.title);
+  if (realTitle) {
+    const key = titleKey(realTitle);
+    if (!key) return null;
+    const candidates = titledByKey.get(key);
+    return candidates?.[0] || null;
+  }
+  const audioOnlyAttach = Boolean(rec.format & FOLLETT_FORMAT.audio);
+  if (!audioOnlyAttach) return null;
   const key = titleKey(rec.series);
   if (!key || !cell(rec.author)) return null;
   const candidates = titledByKey.get(key);
@@ -931,8 +1043,7 @@ export function attachHoldingsToCollection(payload, ingested) {
   const titledByKey = indexTitledCards(payload.titles);
   const leftover = [];
   for (const rec of remaining) {
-    const audioOnlyAttach = Boolean(rec.format & FOLLETT_FORMAT.audio);
-    const hit = audioOnlyAttach ? findTitledCardForHolding(rec, titledByKey) : null;
+    const hit = findTitledCardForHolding(rec, titledByKey);
     if (!hit) {
       leftover.push(rec);
       continue;
@@ -955,12 +1066,27 @@ export function attachHoldingsToCollection(payload, ingested) {
   const compact = compactHoldings(leftover, { batch: ingested.batch });
   payload.stats.holdingsRows = ingested.accepted;
   payload.stats.holdingsUniqueIsbns = ingested.byIsbn.size;
+  payload.stats.holdingsTitledRows = ingested.titled || 0;
   payload.stats.holdingsLinkedToPosted = linked;
   payload.stats.holdingsOnly = compact.n;
+  payload.stats.holdingsOnlyIsbns = leftover.length;
   payload.holdingsFile = "data/holdings.json";
   payload.holdingsBatch = ingested.batch;
   recountPayloadStats(payload);
   return compact;
+}
+
+export function sourceHasFollettTitles(source) {
+  return (source.rows || []).some((row) => {
+    const canonical = canonicalizeRow(row);
+    return Boolean(follettDisplayTitle(canonical));
+  });
+}
+
+export function pickFollettSources(follett) {
+  const titled = follett.filter((source) => sourceHasFollettTitles(source));
+  if (titled.length) return titled;
+  return follett;
 }
 
 export function buildCollectionFromFiles(filePaths, { relativeTo, exclusions = [] } = {}) {
@@ -981,12 +1107,13 @@ export function buildCatalogFromFiles(filePaths, { relativeTo, exclusions = [] }
 
   const collection = buildCollection(posted, { exclusions });
   let holdings = null;
-  if (follett.length) {
+  const selectedFollett = pickFollettSources(follett);
+  if (selectedFollett.length) {
     const ingested = ingestFollettRows(
-      follett.flatMap((source) => source.rows),
+      selectedFollett.flatMap((source) => source.rows),
       { batch: FOLLETT_BATCH },
     );
-    for (const source of follett) collection.sourceFiles.push(source.label);
+    for (const source of selectedFollett) collection.sourceFiles.push(source.label);
     holdings = attachHoldingsToCollection(collection, ingested);
   }
   return { collection, holdings };

@@ -11,8 +11,9 @@
  * Posted titles listed in data/exclusions.json (normalized title + author)
  * are skipped so they cannot return to the approved / posted-for-review list.
  * Follett Destiny holdings are written to public/data/holdings.json as a
- * compact ISBN index so the desk can search ~200k items without shipping
- * a verbose object per row.
+ * compact title+ISBN index so the desk can search ~200k items without shipping
+ * a verbose object per row. Titled district reports group leftover rows onto
+ * one card per normalized title.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -66,7 +67,7 @@ console.log(`Posted periods: ${collection.batches.join(", ")}`);
 console.log(`Levels: ${collection.levels.join(", ")}`);
 if (collection.stats.holdingsUniqueIsbns) {
   console.log(
-    `Follett holdings: ${collection.stats.holdingsRows.toLocaleString()} Book/eBook/Sound/Recording rows with ISBN → ${collection.stats.holdingsUniqueIsbns.toLocaleString()} unique ISBNs (${collection.stats.holdingsLinkedToPosted.toLocaleString()} already on a posted title, ${collection.stats.holdingsOnly.toLocaleString()} holdings-only)`,
+    `Follett holdings: ${collection.stats.holdingsRows.toLocaleString()} Book/eBook/Sound/Recording rows with ISBN → ${collection.stats.holdingsUniqueIsbns.toLocaleString()} unique ISBNs (${collection.stats.holdingsTitledRows?.toLocaleString() || "0"} titled; ${collection.stats.holdingsLinkedToPosted.toLocaleString()} already on a titled card, ${(collection.stats.holdingsOnlyIsbns ?? collection.stats.holdingsOnly).toLocaleString()} leftover ISBNs on ${collection.stats.holdingsOnly.toLocaleString()} title cards)`,
   );
 }
 if (extraCount) {

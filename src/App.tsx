@@ -140,7 +140,7 @@ function Desk({
     : !holdingsReady
       ? "Posted titles are ready. District holdings are still loading for ISBN lookup."
       : !query.trim()
-        ? "HAVE IT / DON'T HAVE IT — title, author, or ISBN. Follett holdings without a title are still found by ISBN or author."
+        ? "HAVE IT / DON'T HAVE IT — title, author, or ISBN. Follett titles search by name; leftover ISBN-only rows still match by ISBN or author."
         : classified.match
           ? classified.match.title.inCollection && classified.match.title.posted !== false
             ? "HAVE IT — in the collection and posted for review."
