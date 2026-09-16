@@ -4,9 +4,31 @@ A desk tool for campus librarians to look up whether a title was posted for comm
 
 Product name: **McAllen ISD Collection Check**.
 
-The app runs in a web browser with no separate server. The posted-title list is loaded from Excel files when someone runs the import, then saved as a file the desk can search even without the internet.
+The app runs in a web browser with no separate server. The posted-title list is loaded from Excel files when someone runs the import (including automatically when this project is published), then saved as a file the desk can search even without the internet.
 
-## Open the desk on a computer
+## Live desk (bookmark this)
+
+After this project is merged to `main` and GitHub Pages is turned on, librarians can open:
+
+**https://annvega-spec.github.io/McAllenISDBookRepository/**
+
+That is a normal website. Bookmark it. No GitHub account is needed to search **if the repository is public**.
+
+### Turn on GitHub Pages (one-time)
+
+1. On GitHub, open the repository → **Settings** → **Pages**.
+2. Under **Build and deployment**, set **Source** to **GitHub Actions**.
+3. Merge to `main` (or re-run the “Build and deploy GitHub Pages” workflow). The live URL above should work after the workflow finishes (often a minute or two).
+
+If Pages is already set to GitHub Actions, you can skip this.
+
+### If the repository is private
+
+On GitHub’s free plan, Pages sites from **private** repositories are not a public bookmark for staff. People may be asked to sign in to GitHub, or the site may not publish at all.
+
+To let campus librarians open the desk **without a GitHub login**, make this repository **public** (Settings → General → Danger Zone → Change repository visibility), or use a paid GitHub plan that allows public Pages from a private repo. The Excel files in this repo will then be visible to anyone, same as the website.
+
+## Open the desk on a computer (for updates)
 
 In the project folder, run:
 
@@ -23,6 +45,8 @@ To make a copy you can put on a static website:
 npm run build
 npm run preview
 ```
+
+A push to `main` also builds and publishes the live GitHub Pages site, including `npm run import` so new files in `data/incoming` are picked up.
 
 ## Search behavior
 
@@ -46,7 +70,7 @@ When the district sends a **new** posted-title Excel file, add it. Do not throw 
    ```
 
    This reads the original spreadsheet plus everything in `data/incoming`, matches books by title (ignoring capital letters and extra spaces) and ISBN, and combines all ISBNs and posted months for each title. Running the same step again with the same files will not double the list.
-3. **Refresh the desk.** If it is already open, reload the browser page. If you publish a built copy, run `npm run build` again so the new titles are included.
+3. **Refresh the desk.** If you are testing on your computer and the desk is already open, reload the browser page. After the change is on `main`, wait for GitHub Actions to finish — the live bookmark updates by itself.
 
 Leave the new Excel files in `data/incoming` after importing so the next update still includes them. Skip Excel lock files whose names start with `~$`.
 
