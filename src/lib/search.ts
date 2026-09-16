@@ -18,15 +18,20 @@ function tokenSet(value: string): string[] {
   return value.split(" ").filter((token) => token.length > 1 || /^\d+$/.test(token));
 }
 
+function tokensSimilar(queryToken: string, titleToken: string): boolean {
+  if (queryToken === titleToken) return true;
+  if (queryToken.length < 3 || titleToken.length < 3) return false;
+  if (/^\d+$/.test(queryToken) || /^\d+$/.test(titleToken)) return queryToken === titleToken;
+  return titleToken.startsWith(queryToken) || queryToken.startsWith(titleToken);
+}
+
 function tokenOverlap(query: string, target: string): number {
   const q = tokenSet(query);
-  const t = new Set(tokenSet(target));
-  if (!q.length || !t.size) return 0;
+  const t = tokenSet(target);
+  if (!q.length || !t.length) return 0;
   let hit = 0;
   for (const token of q) {
-    if (t.has(token) || [...t].some((part) => part.startsWith(token) || token.startsWith(part))) {
-      hit += 1;
-    }
+    if (t.some((part) => tokensSimilar(token, part))) hit += 1;
   }
   return hit / q.length;
 }
@@ -92,7 +97,7 @@ export function searchTitles(
   query: string,
   options: { limit?: number; minScore?: number; batch?: string; level?: string } = {},
 ): ScoredTitle[] {
-  const { limit = 50, minScore = 0.28, batch, level } = options;
+  const { limit = 50, minScore = 0.42, batch, level } = options;
   const trimmed = query.trim();
   const pool = data.titles.filter((title) => {
     if (batch && batch !== "all" && !title.batches.includes(batch)) return false;
@@ -127,8 +132,12 @@ export function classifySearch(results: ScoredTitle[]): {
   const confident =
     top.score >= 0.92 && (!second || top.score - second.score >= 0.04 || top.reason === "isbn");
 
+  const close = results
+    .filter((item) => item.title.id !== top.title.id && item.score >= 0.58)
+    .slice(0, 5);
+
   if (confident) {
-    return { match: top, close: results.slice(1, 6), list: results };
+    return { match: top, close, list: results };
   }
 
   return { match: null, close: results.slice(0, 5), list: results };

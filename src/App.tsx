@@ -98,6 +98,54 @@ function Desk({ data }: { data: CollectionData }) {
   const showSuggestionsOnly =
     searching && !classified.match && classified.list.length > 0 && classified.list[0].score < 0.62;
 
+  const searchHint = !query.trim()
+    ? "Punctuation and leading articles are ignored. Close matches appear if an exact title is not found."
+    : classified.match
+      ? "Posted for review — title found on the master list."
+      : showNoMatch
+        ? "No posted title matched this search."
+        : `${results.length} matching title${results.length === 1 ? "" : "s"}`;
+
+  const verdict = (
+    <>
+      {selected && (searching || selectedId) ? (
+        <MatchCard title={selected} onClose={selectedId ? () => setSelectedId(null) : undefined} />
+      ) : null}
+
+      {showNoMatch ? (
+        <NoMatch
+          query={debounced}
+          suggestions={searchTitles(data, debounced, { limit: 5, minScore: 0.18, batch, level })}
+          onPick={setSelectedId}
+        />
+      ) : null}
+
+      {showSuggestionsOnly ? (
+        <NoMatch query={debounced} suggestions={classified.close} onPick={setSelectedId} />
+      ) : null}
+    </>
+  );
+
+  const listPanel =
+    (searching && !showNoMatch && !showSuggestionsOnly) || browseActive ? (
+      <>
+        <ResultsList
+          items={listItems}
+          activeId={selected?.id ?? null}
+          onSelect={setSelectedId}
+          heading={searching ? (classified.match ? "Other close titles" : "Matching titles") : "Browse titles"}
+          total={searching ? (classified.match ? classified.close.length : results.length) : filteredBrowse.length}
+        />
+        {!searching && visibleCount < filteredBrowse.length ? (
+          <div className="load-more no-print">
+            <button type="button" className="chip" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>
+              Show more titles
+            </button>
+          </div>
+        ) : null}
+      </>
+    ) : null;
+
   return (
     <div className="app-shell">
       <a className="skip-link" href="#search">
@@ -106,31 +154,13 @@ function Desk({ data }: { data: CollectionData }) {
       <Header />
       <main>
         <div id="search">
-          <SearchBox
-            value={query}
-            onChange={setQuery}
-            resultCount={results.length}
-            searching={searching}
-          />
+          <SearchBox value={query} onChange={setQuery} hint={searchHint} />
         </div>
+        {searching ? verdict : null}
+        {searching ? listPanel : null}
         <StatsStrip data={data} />
         <FilterBar data={data} batch={batch} level={level} onBatch={setBatch} onLevel={setLevel} />
-
-        {selected && (searching || selectedId) ? (
-          <MatchCard title={selected} onClose={selectedId ? () => setSelectedId(null) : undefined} />
-        ) : null}
-
-        {showNoMatch ? (
-          <NoMatch
-            query={debounced}
-            suggestions={searchTitles(data, debounced, { limit: 5, minScore: 0.18, batch, level })}
-            onPick={setSelectedId}
-          />
-        ) : null}
-
-        {showSuggestionsOnly ? (
-          <NoMatch query={debounced} suggestions={classified.close} onPick={setSelectedId} />
-        ) : null}
+        {!searching ? verdict : null}
 
         {!searching && !browseActive ? (
           <section className="welcome no-print">
@@ -144,24 +174,7 @@ function Desk({ data }: { data: CollectionData }) {
           </section>
         ) : null}
 
-        {(searching && !showNoMatch && !showSuggestionsOnly) || browseActive ? (
-          <>
-            <ResultsList
-              items={listItems}
-              activeId={selected?.id ?? null}
-              onSelect={setSelectedId}
-              query={searching ? debounced : ""}
-              total={searching ? results.length : filteredBrowse.length}
-            />
-            {!searching && visibleCount < filteredBrowse.length ? (
-              <div className="load-more no-print">
-                <button type="button" className="chip" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>
-                  Show more titles
-                </button>
-              </div>
-            ) : null}
-          </>
-        ) : null}
+        {!searching ? listPanel : null}
       </main>
       <Footer />
     </div>

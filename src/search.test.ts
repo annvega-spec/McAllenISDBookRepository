@@ -52,4 +52,10 @@ describe("title search", () => {
     expect(classifySearch(results).match).toBeNull();
     expect(results.every((item) => item.score < 0.92)).toBe(true);
   });
+
+  it("does not list unrelated titles under an exact match", () => {
+    const classified = classifySearch(searchTitles(data, "101 Dalmatians"));
+    expect(classified.close.some((item) => item.title.title === "10 perros")).toBe(false);
+    expect(classified.close.every((item) => item.score >= 0.58)).toBe(true);
+  });
 });

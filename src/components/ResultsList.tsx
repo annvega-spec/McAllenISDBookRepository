@@ -4,17 +4,17 @@ type ResultsListProps = {
   items: Array<ScoredTitle | { title: TitleRecord; score?: number; reason?: string }>;
   activeId: string | null;
   onSelect: (id: string) => void;
-  query: string;
+  heading: string;
   total?: number;
 };
 
-export function ResultsList({ items, activeId, onSelect, query, total }: ResultsListProps) {
+export function ResultsList({ items, activeId, onSelect, heading, total }: ResultsListProps) {
   if (!items.length) return null;
 
   return (
-    <section className="results no-print" aria-label="Matching titles">
+    <section className="results no-print" aria-label={heading}>
       <div className="results-head">
-        <h2>{query ? "Matching titles" : "Browse titles"}</h2>
+        <h2>{heading}</h2>
         <p>
           {total != null && total > items.length
             ? `Showing ${items.length} of ${total.toLocaleString()}`

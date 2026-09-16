@@ -3,11 +3,10 @@ import { useEffect, useId, useRef } from "react";
 type SearchBoxProps = {
   value: string;
   onChange: (value: string) => void;
-  resultCount: number;
-  searching: boolean;
+  hint: string;
 };
 
-export function SearchBox({ value, onChange, resultCount, searching }: SearchBoxProps) {
+export function SearchBox({ value, onChange, hint }: SearchBoxProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const id = useId();
 
@@ -64,9 +63,7 @@ export function SearchBox({ value, onChange, resultCount, searching }: SearchBox
         )}
       </div>
       <p id={`${id}-hint`} className="search-hint">
-        {searching
-          ? `${resultCount} matching title${resultCount === 1 ? "" : "s"}`
-          : "Punctuation and leading articles are ignored. Close matches appear if an exact title is not found."}
+        {hint}
       </p>
     </section>
   );
