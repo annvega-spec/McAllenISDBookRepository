@@ -9,6 +9,8 @@ import {
   buildCollection,
   buildCollectionFromFiles,
   ingestFollettRows,
+  isExcludedPostedTitle,
+  loadPostedExclusions,
   rowFingerprint,
   titleKey,
 } from "../scripts/lib/build-collection.mjs";
@@ -382,5 +384,104 @@ describe("compact Follett holdings", () => {
     expect(catalog.collection.uniqueTitleCount).toBe(1);
     expect(catalog.collection.titles[0].inCollection).toBe(true);
     expect(catalog.holdings.n).toBe(1);
+  });
+});
+
+const HOPKINS_EXCLUSIONS = [
+  { title: "Crank", author: "Ellen Hopkins" },
+  { title: "Glass", author: "Ellen Hopkins" },
+];
+
+describe("posted title exclusions", () => {
+  it("matches Crank / Glass title variants with Ellen Hopkins author orderings", () => {
+    expect(isExcludedPostedTitle("CRANK.", "Hopkins, Ellen.", HOPKINS_EXCLUSIONS)).toBe(true);
+    expect(isExcludedPostedTitle("Crank", "Ellen Hopkins", HOPKINS_EXCLUSIONS)).toBe(true);
+    expect(isExcludedPostedTitle("Glass", "Hopkins, Ellen,", HOPKINS_EXCLUSIONS)).toBe(true);
+    expect(isExcludedPostedTitle("The Glass", "Ellen Hopkins", HOPKINS_EXCLUSIONS)).toBe(true);
+  });
+
+  it("does not match other Ellen Hopkins titles or other Crank/Glass books", () => {
+    expect(isExcludedPostedTitle("Impulse", "Hopkins, Ellen", HOPKINS_EXCLUSIONS)).toBe(false);
+    expect(isExcludedPostedTitle("Crankenstein", "Samantha Berger", HOPKINS_EXCLUSIONS)).toBe(false);
+    expect(isExcludedPostedTitle("Glass slippers", "Cypess, Leah", HOPKINS_EXCLUSIONS)).toBe(false);
+    expect(isExcludedPostedTitle("Crank", "Hopkinson, Deborah", HOPKINS_EXCLUSIONS)).toBe(false);
+    expect(isExcludedPostedTitle("Starminster", "Hopkins, Megan", HOPKINS_EXCLUSIONS)).toBe(false);
+  });
+
+  it("drops excluded posted rows so a later import cannot restore them as approved", () => {
+    const payload = buildCollection(
+      [
+        rows([
+          { Title: "Crank", Author: "Hopkins, Ellen", ISBN: "9781416905080", "Source Batch": "Sep 2025", Level: "High" },
+          { Title: "CRANK.", Author: "Ellen Hopkins", ISBN: "9781442471818", "Source Batch": "All Campuses", Level: "High" },
+          { Title: "Glass", Author: "Hopkins, Ellen.", ISBN: "9781416940906", "Source Batch": "Oct 2025", Level: "High" },
+          { Title: "Impulse", Author: "Hopkins, Ellen", ISBN: "9781416903567", "Source Batch": "Nov 2025", Level: "High" },
+          { Title: "Crankenstein", Author: "Samantha Berger", ISBN: "9780316126564", "Source Batch": "Oct 2025", Level: "Elementary" },
+          { Title: "Glass slippers", Author: "Cypess, Leah", ISBN: "9781546130000", "Source Batch": "All Campuses", Level: "Elementary" },
+        ]),
+        {
+          filePath: "ebook-list-A.xlsx",
+          label: "ebook-list-A.xlsx",
+          kind: "ebook-order",
+          rows: [{ Title: "CRANK", Author: "HOPKINS, ELLEN", ISBN: "9781439106518", Edition: "EBOOK" }],
+        },
+      ],
+      { exclusions: HOPKINS_EXCLUSIONS },
+    );
+
+    expect(payload.stats.skippedExcludedRows).toBe(4);
+    expect(payload.titles.map((title) => title.title).sort()).toEqual(["Crankenstein", "Glass slippers", "Impulse"]);
+    expect(payload.titles.every((title) => title.posted !== false)).toBe(true);
+    expect(payload.titles.find((title) => titleKey(title.title) === "crank")).toBeUndefined();
+    expect(payload.titles.find((title) => titleKey(title.title) === "glass")).toBeUndefined();
+  });
+
+  it("does not treat Follett-only Crank/Glass holdings as posted", () => {
+    const posted = buildCollection(
+      [
+        rows([
+          { Title: "Crank", Author: "Ellen Hopkins", ISBN: "9781416905080", "Source Batch": "Sep 2025" },
+          { Title: "Harbor Lights", Author: "Ng, C", ISBN: "9787777777777", "Source Batch": "Apr 2026" },
+        ]),
+      ],
+      { exclusions: HOPKINS_EXCLUSIONS },
+    );
+    const ingested = ingestFollettRows([
+      { Author: "Hopkins, Ellen.", ISBN: "9781439106518", "Material Type": "eBook", "Series Title": "Crank." },
+      { Author: "Hopkins, Ellen.", ISBN: "9781416940906", "Material Type": "Book", "Series Title": "Glass." },
+    ]);
+    const compact = attachHoldingsToCollection(posted, ingested);
+    expect(posted.titles.map((title) => title.title)).toEqual(["Harbor Lights"]);
+    expect(posted.titles[0].posted).not.toBe(false);
+    expect(compact.n).toBe(2);
+    expect(posted.stats.holdingsLinkedToPosted).toBe(0);
+  });
+
+  it("loads the checked-in exclusions file for Crank and Glass by Ellen Hopkins", () => {
+    const loaded = loadPostedExclusions(join(process.cwd(), "data", "exclusions.json"));
+    expect(loaded).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: "Crank", author: "Ellen Hopkins" }),
+        expect.objectContaining({ title: "Glass", author: "Ellen Hopkins" }),
+      ]),
+    );
+    expect(loaded).toHaveLength(2);
+  });
+
+  it("honors exclusions when reading a real posted spreadsheet", () => {
+    const dir = mkdtempSync(join(tmpdir(), "misd-exclude-"));
+    const file = join(dir, "posted.xlsx");
+    const sheet = XLSX.utils.json_to_sheet([
+      { Title: "Crank", Author: "Ellen Hopkins", ISBN: "9781416905080", "Source Batch": "Sep 2025" },
+      { Title: "Glass", Author: "Hopkins, Ellen", ISBN: "9781416940906", "Source Batch": "Oct 2025" },
+      { Title: "Impulse", Author: "Hopkins, Ellen", ISBN: "9781416903567", "Source Batch": "Nov 2025" },
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, sheet, "Master List");
+    XLSX.writeFile(wb, file);
+    const payload = buildCollectionFromFiles([file], { exclusions: HOPKINS_EXCLUSIONS });
+    expect(payload.uniqueTitleCount).toBe(1);
+    expect(payload.titles[0].title).toBe("Impulse");
+    expect(payload.stats.skippedExcludedRows).toBe(2);
   });
 });

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { collapseCollection } from "./lib/group";
 import { buildHoldingsIndex, type CompactHoldings } from "./lib/holdings";
 import { classifySearch, searchTitles } from "./lib/search";
-import { normalizeTitle } from "./lib/normalize";
+import { normalizeLoose, normalizeTitle } from "./lib/normalize";
 import type { CollectionData } from "./types";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -106,5 +106,44 @@ describe("additional spreadsheets", () => {
     if (!title?.title) {
       expect(title?.titleUnknown).toBe(true);
     }
+  });
+});
+
+function isEllenHopkins(authors: string[]): boolean {
+  const tokens = new Set(normalizeLoose(authors.join(" ")).split(" ").filter(Boolean));
+  return tokens.has("ellen") && tokens.has("hopkins") && !tokens.has("hopkinson");
+}
+
+describe("Ellen Hopkins posted exclusions", () => {
+  it("does not list Crank or Glass by Ellen Hopkins as posted for community review", () => {
+    const postedHopkins = data.titles.filter(
+      (title) =>
+        (normalizeTitle(title.title) === "crank" || normalizeTitle(title.title) === "glass") &&
+        isEllenHopkins(title.authors) &&
+        title.posted !== false,
+    );
+    expect(postedHopkins).toHaveLength(0);
+
+    for (const query of ["Crank Ellen Hopkins", "Glass Ellen Hopkins", "Crank Hopkins", "Glass Hopkins"]) {
+      const results = searchTitles(data, query, { holdingsIndex });
+      for (const item of results) {
+        const key = normalizeTitle(item.title.title);
+        if ((key === "crank" || key === "glass") && isEllenHopkins(item.title.authors)) {
+          expect(item.title.posted, query).toBe(false);
+        }
+      }
+      const match = classifySearch(results).match?.title;
+      if (match && (normalizeTitle(match.title) === "crank" || normalizeTitle(match.title) === "glass") && isEllenHopkins(match.authors)) {
+        expect(match.posted).toBe(false);
+      }
+    }
+  });
+
+  it("leaves other titles, including other Ellen Hopkins and other Glass/Crank books, in place", () => {
+    expect(data.titles.some((title) => normalizeTitle(title.title) === "crankenstein" && title.posted !== false)).toBe(true);
+    expect(data.titles.some((title) => normalizeTitle(title.title) === "glass slippers" && title.posted !== false)).toBe(true);
+    const slippers = classifySearch(searchTitles(data, "Glass slippers", { holdingsIndex })).match?.title;
+    expect(slippers?.title).toBe("Glass slippers");
+    expect(slippers?.posted).not.toBe(false);
   });
 });

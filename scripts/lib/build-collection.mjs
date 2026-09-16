@@ -7,7 +7,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import XLSX from "xlsx";
 import { parseIsbnCell } from "./isbn.mjs";
@@ -118,6 +118,40 @@ export function titleKey(title) {
     parts.shift();
   }
   return parts.join(" ");
+}
+
+export function authorTokens(author) {
+  return cell(author)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+export function authorsMatch(rowAuthor, exclusionAuthor) {
+  const need = authorTokens(exclusionAuthor);
+  if (!need.length) return false;
+  const have = new Set(authorTokens(rowAuthor));
+  return need.every((token) => have.has(token));
+}
+
+export function loadPostedExclusions(filePath) {
+  if (!filePath || !existsSync(filePath)) return [];
+  const raw = JSON.parse(readFileSync(filePath, "utf8"));
+  const list = Array.isArray(raw) ? raw : raw.postedTitles || [];
+  return list
+    .map((item) => ({
+      title: cell(item.title),
+      author: cell(item.author),
+    }))
+    .filter((item) => item.title && item.author);
+}
+
+export function isExcludedPostedTitle(title, author, exclusions = []) {
+  const key = titleKey(title);
+  if (!key || !exclusions.length) return false;
+  return exclusions.some((item) => titleKey(item.title) === key && authorsMatch(author, item.author));
 }
 
 export function isbnDigits(value) {
@@ -489,6 +523,7 @@ function finalizeGroups(groups, sourceFiles) {
       rowsByLevel: {},
       titlesByLevel: {},
       skippedDuplicateRows: 0,
+      skippedExcludedRows: 0,
       postedTitleCount: 0,
       inCollectionPostedCount: 0,
       holdingsRows: 0,
@@ -601,10 +636,11 @@ function groupKeyForRow(row) {
   return "";
 }
 
-export function buildCollection(sources) {
+export function buildCollection(sources, { exclusions = [] } = {}) {
   const groups = new Map();
   const seen = new Set();
   let skippedDuplicateRows = 0;
+  let skippedExcludedRows = 0;
   let acceptedRows = 0;
   const sourceFiles = [];
 
@@ -619,6 +655,10 @@ export function buildCollection(sources) {
       const title = cell(row.Title);
       const isbns = collectIsbns(row);
       if (!title && !isbns.size) continue;
+      if (row._presence !== "holdings" && isExcludedPostedTitle(title, cell(row.Author), exclusions)) {
+        skippedExcludedRows += 1;
+        continue;
+      }
       const fingerprint = rowFingerprint(row);
       if (seen.has(fingerprint)) {
         skippedDuplicateRows += 1;
@@ -637,6 +677,7 @@ export function buildCollection(sources) {
   const payload = finalizeGroups(merged, sourceFiles);
   payload.rowCount = acceptedRows;
   payload.stats.skippedDuplicateRows = skippedDuplicateRows;
+  payload.stats.skippedExcludedRows = skippedExcludedRows;
   payload.stats.rowsByBatch = payload.stats.titlesByBatch;
   return payload;
 }
@@ -772,11 +813,11 @@ export function attachHoldingsToCollection(payload, ingested) {
   return compact;
 }
 
-export function buildCollectionFromFiles(filePaths, { relativeTo } = {}) {
-  return buildCatalogFromFiles(filePaths, { relativeTo }).collection;
+export function buildCollectionFromFiles(filePaths, { relativeTo, exclusions = [] } = {}) {
+  return buildCatalogFromFiles(filePaths, { relativeTo, exclusions }).collection;
 }
 
-export function buildCatalogFromFiles(filePaths, { relativeTo } = {}) {
+export function buildCatalogFromFiles(filePaths, { relativeTo, exclusions = [] } = {}) {
   const posted = [];
   const follett = [];
   for (const filePath of filePaths) {
@@ -788,7 +829,7 @@ export function buildCatalogFromFiles(filePaths, { relativeTo } = {}) {
     else posted.push(source);
   }
 
-  const collection = buildCollection(posted);
+  const collection = buildCollection(posted, { exclusions });
   let holdings = null;
   if (follett.length) {
     const ingested = ingestFollettRows(

@@ -8,6 +8,8 @@
  * Re-running with the same files will not duplicate titles. Matching is by
  * normalized title and ISBN; posted dates and ISBNs are combined.
  *
+ * Posted titles listed in data/exclusions.json (normalized title + author)
+ * are skipped so they cannot return to the approved / posted-for-review list.
  * Follett Destiny holdings are written to public/data/holdings.json as a
  * compact ISBN index so the desk can search ~200k items without shipping
  * a verbose object per row.
@@ -16,11 +18,12 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildCatalogFromFiles, collectSourceFiles } from "./lib/build-collection.mjs";
+import { buildCatalogFromFiles, collectSourceFiles, loadPostedExclusions } from "./lib/build-collection.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MASTER = join(ROOT, "data", "master-list.xlsx");
 const INCOMING = join(ROOT, "data", "incoming");
+const EXCLUSIONS = join(ROOT, "data", "exclusions.json");
 const OUTPUT = join(ROOT, "public", "data", "collection.json");
 const HOLDINGS = join(ROOT, "public", "data", "holdings.json");
 
@@ -36,7 +39,8 @@ if (!files.length) {
   process.exit(1);
 }
 
-const { collection, holdings } = buildCatalogFromFiles(files, { relativeTo: ROOT });
+const exclusions = loadPostedExclusions(EXCLUSIONS);
+const { collection, holdings } = buildCatalogFromFiles(files, { relativeTo: ROOT, exclusions });
 mkdirSync(dirname(OUTPUT), { recursive: true });
 writeFileSync(OUTPUT, JSON.stringify(collection));
 if (holdings) writeFileSync(HOLDINGS, JSON.stringify(holdings));
@@ -50,6 +54,11 @@ console.log(`Unique listings (after skipping exact re-imports): ${collection.row
 if (collection.stats.skippedDuplicateRows) {
   console.log(
     `Skipped ${collection.stats.skippedDuplicateRows} duplicate row${collection.stats.skippedDuplicateRows === 1 ? "" : "s"} already on the list`,
+  );
+}
+if (collection.stats.skippedExcludedRows) {
+  console.log(
+    `Skipped ${collection.stats.skippedExcludedRows} excluded posted title row${collection.stats.skippedExcludedRows === 1 ? "" : "s"}`,
   );
 }
 console.log(`Unique posted titles: ${collection.uniqueTitleCount}`);
