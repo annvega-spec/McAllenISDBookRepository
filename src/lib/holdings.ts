@@ -8,6 +8,8 @@ export type CompactHoldings = {
   a: string[];
   s: string[];
   r: Array<[number, number, number, number]>;
+  /** Extra ISBN-13s on the same title card (unioned leftover holdings). */
+  x?: number[][];
 };
 
 export type HoldingsIndex = {
@@ -31,35 +33,57 @@ function addToken(map: Map<string, number[]>, token: string, index: number) {
   }
 }
 
+function addIsbn(map: Map<string, number>, isbn: string, index: number) {
+  if (!isbn) return;
+  map.set(isbn, index);
+  const isbn10 = isbn.length === 13 ? isbn13To10(isbn) : "";
+  if (isbn10) map.set(isbn10, index);
+}
+
 export function buildHoldingsIndex(compact: CompactHoldings): HoldingsIndex {
   const isbnMap = new Map<string, number>();
   const tokenMap = new Map<string, number[]>();
   for (let i = 0; i < compact.r.length; i += 1) {
-    const isbn13 = String(compact.r[i][0]);
-    isbnMap.set(isbn13, i);
-    const isbn10 = isbn13To10(isbn13);
-    if (isbn10) isbnMap.set(isbn10, i);
+    addIsbn(isbnMap, String(compact.r[i][0]), i);
+    for (const extra of compact.x?.[i] || []) addIsbn(isbnMap, String(extra), i);
     const author = compact.a[compact.r[i][1]] || "";
-    const series = compact.s[compact.r[i][2]] || "";
+    const title = compact.s[compact.r[i][2]] || "";
     for (const token of tokenize(author)) addToken(tokenMap, token, i);
-    for (const token of tokenize(series)) addToken(tokenMap, token, i);
+    for (const token of tokenize(title)) addToken(tokenMap, token, i);
   }
   return { compact, isbnMap, tokenMap };
 }
 
+function holdingIsbnList(index: HoldingsIndex, rowIndex: number): string[] {
+  const rec = index.compact.r[rowIndex];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  function push(isbn: string) {
+    if (!isbn || seen.has(isbn)) return;
+    seen.add(isbn);
+    out.push(isbn);
+    const isbn10 = isbn.length === 13 ? isbn13To10(isbn) : "";
+    if (isbn10 && !seen.has(isbn10)) {
+      seen.add(isbn10);
+      out.push(isbn10);
+    }
+  }
+  push(String(rec[0]));
+  for (const extra of index.compact.x?.[rowIndex] || []) push(String(extra));
+  return out;
+}
+
 export function hydrateHolding(index: HoldingsIndex, rowIndex: number): TitleRecord {
   const rec = index.compact.r[rowIndex];
-  const isbn13 = String(rec[0]);
-  const isbn10 = isbn13To10(isbn13);
+  const isbnDigits = holdingIsbnList(index, rowIndex);
   const author = index.compact.a[rec[1]] || "";
-  const series = index.compact.s[rec[2]] || "";
+  const title = index.compact.s[rec[2]] || "";
   const format = rec[3] || 1;
-  const isbnDigits = isbn10 ? [isbn13, isbn10] : [isbn13];
   return {
-    id: `h:${isbn13}`,
-    title: series,
-    titleUnknown: !series,
-    authors: author ? [author] : [],
+    id: `h:${String(rec[0])}`,
+    title,
+    titleUnknown: !title,
+    authors: author ? author.split(/\s*;\s*/).filter(Boolean) : [],
     isbns: isbnDigits,
     isbnDigits,
     batches: [index.compact.b],

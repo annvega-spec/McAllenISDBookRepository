@@ -184,7 +184,12 @@ export function searchTitles(
       const { score, reason } = titleScore(trimmed, title);
       const floor = title.title ? Math.max(score, 0.55) : Math.max(score, 0.7);
       if (floor >= minScore) {
-        scored.push({ title, score: Math.min(floor, 0.9), reason: reason === "title" ? "title" : "author" });
+        const titledExact = Boolean(title.title) && reason === "title" && score >= 0.92;
+        scored.push({
+          title,
+          score: titledExact ? score : Math.min(floor, 0.9),
+          reason: reason === "title" ? "title" : "author",
+        });
         seen.add(groupKey);
       }
     }

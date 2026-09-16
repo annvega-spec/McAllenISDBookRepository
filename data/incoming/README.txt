@@ -4,7 +4,7 @@ Do not replace or delete the original file in the parent folder
 (data/master-list.xlsx). New files are added on top of that list.
 
 This folder currently also holds:
-- District-Report-9.16.26.xlsx (Follett Destiny holdings)
+- District-Report-Deduped.xlsx (Follett Destiny holdings with Title/Subtitle; supersedes the older title-less District-Report-9.16.26.xlsx)
 - Sora-titles.xlsx (Sora Ebook/Audiobook collection)
 - All-Campuses.xlsx (posted/approved campus list)
 - ebook-list-A.xlsx, ebook-list-B.xlsx, ebook-list-C.xlsx (eBook orders)

@@ -59,6 +59,8 @@ export type CollectionData = {
     holdingsUniqueIsbns?: number;
     holdingsLinkedToPosted?: number;
     holdingsOnly?: number;
+    holdingsOnlyIsbns?: number;
+    holdingsTitledRows?: number;
   };
   titles: TitleRecord[];
 };

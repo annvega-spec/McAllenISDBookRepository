@@ -168,6 +168,28 @@ describe("holdings-only ISBN search", () => {
     expect(match?.titleUnknown).toBe(true);
     expect(match?.isbnDigits).toContain("9780002251181");
   });
+
+  it("finds a titled Follett leftover by name and unions every ISBN on one card", () => {
+    const index = buildHoldingsIndex({
+      b: "Follett 9.16.26",
+      n: 1,
+      a: ["", "Lowry, Lois"],
+      s: ["", "The Giver"],
+      r: [[9780385732550, 1, 1, 1]],
+      x: [[9780544336261]],
+    });
+    const byTitle = searchTitles(data, "The Giver", { holdingsIndex: index });
+    const match = classifySearch(byTitle).match?.title;
+    expect(match?.title).toBe("The Giver");
+    expect(match?.inCollection).toBe(true);
+    expect(match?.posted).toBe(false);
+    expect(match?.isbnDigits).toEqual(expect.arrayContaining(["9780385732550", "9780544336261"]));
+    expect(byTitle.filter((item) => normalizeTitle(item.title.title) === "giver")).toHaveLength(1);
+
+    const byIsbn = classifySearch(searchTitles(data, "9780544336261", { holdingsIndex: index })).match?.title;
+    expect(byIsbn?.title).toBe("The Giver");
+    expect(byIsbn?.isbnDigits).toEqual(expect.arrayContaining(["9780385732550", "9780544336261"]));
+  });
 });
 
 describe("Follett audiobook alignment", () => {

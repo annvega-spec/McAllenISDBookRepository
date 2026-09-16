@@ -11,7 +11,9 @@ import {
   FOLLETT_FORMAT,
   ingestFollettRows,
   isExcludedPostedTitle,
+  isSoraStaffOnly,
   loadPostedExclusions,
+  pickFollettSources,
   rowFingerprint,
   titleKey,
 } from "../scripts/lib/build-collection.mjs";
@@ -747,5 +749,254 @@ describe("Sora export", () => {
     const solo = catalog.collection.titles.find((title) => title.title === "Sora Solo");
     expect(solo?.formats.audio).toBe(true);
     expect(solo?.posted).toBe(false);
+  });
+
+  it("treats Staff Only (case-insensitive, including mixed access-level lists) as staff-only", () => {
+    expect(isSoraStaffOnly("Staff Only")).toBe(true);
+    expect(isSoraStaffOnly("staff only")).toBe(true);
+    expect(isSoraStaffOnly("STAFF ONLY")).toBe(true);
+    expect(isSoraStaffOnly("High School, Staff Only")).toBe(true);
+    expect(isSoraStaffOnly("Staff Only; Elementary")).toBe(true);
+    expect(isSoraStaffOnly("Elementary")).toBe(false);
+    expect(isSoraStaffOnly("High School")).toBe(false);
+    expect(isSoraStaffOnly("Middle School")).toBe(false);
+  });
+
+  it("skips Staff Only Sora rows and still imports Elementary/High School Sora titles", () => {
+    const payload = buildCollection([
+      {
+        filePath: "Sora-titles.xlsx",
+        label: "Sora-titles.xlsx",
+        kind: "sora",
+        rows: [
+          {
+            TitleID: 1,
+            Title: "Dungeon Crawler Carl",
+            Creator: "Dinniman, Matt",
+            ISBN: "9798232923594",
+            Format: "Ebook",
+            "Content access levels": "Staff Only",
+          },
+          {
+            TitleID: 2,
+            Title: "STAFF ONLY AUDIO",
+            Creator: "Hidden, A",
+            ISBN: "9780001111111",
+            Format: "Audiobook",
+            "Content access levels": "staff only",
+          },
+          {
+            TitleID: 3,
+            Title: "Mixed Access Skip",
+            Creator: "Skip, Me",
+            ISBN: "9780002222222",
+            Format: "Ebook",
+            "Content access levels": "High School, Staff Only",
+          },
+          {
+            TitleID: 4,
+            Title: "1984",
+            Creator: "Orwell, George",
+            ISBN: "9780547249643",
+            Format: "Ebook",
+            "Content access levels": "High School",
+          },
+          {
+            TitleID: 5,
+            Title: "#Goldilocks: A Hashtag Cautionary Tale",
+            Creator: "Willis, Jeanne",
+            ISBN: "9781787611597",
+            Format: "Ebook",
+            "Content access levels": "Elementary",
+          },
+        ],
+      },
+    ]);
+    expect(payload.titles.find((title) => title.title === "Dungeon Crawler Carl")).toBeUndefined();
+    expect(payload.titles.find((title) => title.isbnDigits.includes("9798232923594"))).toBeUndefined();
+    expect(payload.titles.find((title) => title.isbnDigits.includes("9780001111111"))).toBeUndefined();
+    expect(payload.titles.find((title) => title.title === "Mixed Access Skip")).toBeUndefined();
+    const campusHigh = payload.titles.find((title) => title.title === "1984");
+    expect(campusHigh?.inCollection).toBe(true);
+    expect(campusHigh?.posted).toBe(false);
+    expect(campusHigh?.batches).toEqual(["Sora 2026-09-16"]);
+    expect(campusHigh?.levels).toEqual(["High"]);
+    expect(campusHigh?.isbnDigits).toContain("9780547249643");
+    const campusElem = payload.titles.find((title) => title.title.includes("Goldilocks"));
+    expect(campusElem?.inCollection).toBe(true);
+    expect(campusElem?.levels).toEqual(["Elementary"]);
+    expect(campusElem?.isbnDigits).toContain("9781787611597");
+  });
+
+  it("keeps a posted/Follett card and drops only the Staff Only Sora ISBN", () => {
+    const payload = buildCollection([
+      rows([
+        {
+          Title: "Circe",
+          Author: "Miller, Madeline",
+          ISBN: "9780316556330",
+          "Source Batch": "Sep 2025",
+          Level: "High",
+        },
+      ]),
+      {
+        filePath: "Sora-titles.xlsx",
+        label: "Sora-titles.xlsx",
+        kind: "sora",
+        rows: [
+          {
+            TitleID: 1,
+            Title: "Circe",
+            Creator: "Miller, Madeline",
+            ISBN: "9781478975311",
+            Format: "Audiobook",
+            "Content access levels": "Staff Only",
+          },
+          {
+            TitleID: 2,
+            Title: "Circe",
+            Creator: "Miller, Madeline",
+            ISBN: "9780547249999",
+            Format: "Ebook",
+            "Content access levels": "High School",
+          },
+        ],
+      },
+    ]);
+    expect(payload.uniqueTitleCount).toBe(1);
+    const title = payload.titles[0];
+    expect(title.title).toBe("Circe");
+    expect(title.posted).toBe(true);
+    expect(title.inCollection).toBe(true);
+    expect(title.isbnDigits).toContain("9780316556330");
+    expect(title.isbnDigits).toContain("9780547249999");
+    expect(title.isbnDigits).not.toContain("9781478975311");
+    expect(title.batches).toEqual(expect.arrayContaining(["Sep 2025", "Sora 2026-09-16"]));
+    expect(title.formats.ebook).toBe(true);
+    expect(title.formats.audio).toBe(false);
+  });
+});
+
+describe("titled Follett district report", () => {
+  it("uses Title/Subtitle as the real title instead of Series Title", () => {
+    const ingested = ingestFollettRows([
+      {
+        Author: "Lowry, Lois",
+        ISBN: "9780544336261",
+        "Material Type": "Book",
+        "Series Title": "Giver Quartet",
+        "Title/Subtitle": "The Giver",
+      },
+    ]);
+    expect(ingested.byIsbn.get("9780544336261")?.title).toBe("The Giver");
+    expect(ingested.byIsbn.get("9780544336261")?.series).toBe("Giver Quartet");
+    expect(ingested.titled).toBe(1);
+  });
+
+  it("attaches a titled Follett ISBN onto an existing posted card by normalized title", () => {
+    const posted = buildCollection([
+      rows([{ Title: "The Giver", Author: "Lowry, Lois", ISBN: "9780385732550", "Source Batch": "Sep 2025" }]),
+    ]);
+    const ingested = ingestFollettRows([
+      {
+        Author: "Lowry, Lois",
+        ISBN: "9780544336261",
+        "Material Type": "Book",
+        "Series Title": "Giver Quartet",
+        "Title/Subtitle": "Giver",
+      },
+    ]);
+    const compact = attachHoldingsToCollection(posted, ingested);
+    expect(posted.uniqueTitleCount).toBe(1);
+    expect(posted.titles[0].isbnDigits).toEqual(expect.arrayContaining(["9780385732550", "9780544336261"]));
+    expect(posted.titles[0].inCollection).toBe(true);
+    expect(compact.n).toBe(0);
+  });
+
+  it("groups leftover titled rows onto one compact card with every ISBN", () => {
+    const posted = buildCollection([
+      rows([{ Title: "Harbor Lights", Author: "Ng, C", ISBN: "9787777777777", "Source Batch": "Apr 2026" }]),
+    ]);
+    const ingested = ingestFollettRows([
+      { Author: "A", ISBN: "9781111111111", "Material Type": "Book", "Title/Subtitle": "The Giver" },
+      { Author: "A", ISBN: "9782222222222", "Material Type": "eBook", "Title/Subtitle": "Giver" },
+      { Author: "A", ISBN: "9783333333333", "Material Type": "Sound", "Title/Subtitle": "The Giver!" },
+    ]);
+    const compact = attachHoldingsToCollection(posted, ingested);
+    expect(compact.n).toBe(1);
+    expect(titleKey(compact.s[compact.r[0][2]])).toBe("giver");
+    const extras = compact.x?.[0] || [];
+    const isbns = [String(compact.r[0][0]), ...extras.map(String)];
+    expect(isbns).toEqual(expect.arrayContaining(["9781111111111", "9782222222222", "9783333333333"]));
+    expect(compact.r[0][3] & FOLLETT_FORMAT.book).toBeTruthy();
+    expect(compact.r[0][3] & FOLLETT_FORMAT.ebook).toBeTruthy();
+    expect(compact.r[0][3] & FOLLETT_FORMAT.audio).toBeTruthy();
+  });
+
+  it("does not create a second card when ISBN already sits on a titled card", () => {
+    const posted = buildCollection([
+      rows([{ Title: "The Giver", Author: "Lowry, Lois", ISBN: "9780544336261", "Source Batch": "Sep 2025" }]),
+    ]);
+    const ingested = ingestFollettRows([
+      { Author: "Lowry, Lois", ISBN: "978-0-544-33626-1", "Material Type": "Book", "Title/Subtitle": "The Giver" },
+      { Author: "Lowry, Lois", ISBN: "9780385732550", "Material Type": "eBook", "Title/Subtitle": "The Giver" },
+    ]);
+    const compact = attachHoldingsToCollection(posted, ingested);
+    expect(posted.uniqueTitleCount).toBe(1);
+    expect(posted.titles.filter((title) => titleKey(title.title) === "giver")).toHaveLength(1);
+    expect(posted.titles[0].isbnDigits).toEqual(expect.arrayContaining(["9780544336261", "9780385732550"]));
+    expect(compact.n).toBe(0);
+  });
+
+  it("prefers a titled Follett workbook over a title-less district report", () => {
+    const dir = mkdtempSync(join(tmpdir(), "misd-follett-titled-"));
+    const postedFile = join(dir, "posted.xlsx");
+    const untitledFile = join(dir, "District-Report-9.16.26.xlsx");
+    const titledFile = join(dir, "District-Report-Deduped.xlsx");
+
+    const postedSheet = XLSX.utils.json_to_sheet([
+      { Title: "Harbor Lights", Author: "Ng, C", ISBN: "9787777777777", "Source Batch": "Apr 2026" },
+    ]);
+    const postedWb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(postedWb, postedSheet, "Master List");
+    XLSX.writeFile(postedWb, postedFile);
+
+    const untitledSheet = XLSX.utils.json_to_sheet([
+      { Author: "Lowry, Lois", ISBN: "9780544336261", "Material Type": "Book", "Series Title": "Giver Quartet" },
+      { Author: "Other", ISBN: "9781111111111", "Material Type": "Book", "Series Title": "" },
+    ]);
+    const untitledWb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(untitledWb, untitledSheet, "District Report 9.16.26");
+    XLSX.writeFile(untitledWb, untitledFile);
+
+    const titledSheet = XLSX.utils.json_to_sheet([
+      {
+        Author: "Lowry, Lois",
+        ISBN: "9780544336261",
+        "Material Type": "Book",
+        "Series Title": "Giver Quartet",
+        "Title/Subtitle": "The Giver",
+      },
+    ]);
+    const titledWb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(titledWb, titledSheet, "District Report Deduped");
+    XLSX.utils.book_append_sheet(titledWb, XLSX.utils.aoa_to_sheet([["Item", "Value"], ["Rows remaining", 1]]), "Dedup Summary");
+    XLSX.writeFile(titledWb, titledFile);
+
+    expect(
+      pickFollettSources([
+        { filePath: untitledFile, rows: XLSX.utils.sheet_to_json(untitledWb.Sheets["District Report 9.16.26"]) },
+        { filePath: titledFile, rows: XLSX.utils.sheet_to_json(titledWb.Sheets["District Report Deduped"]) },
+      ]).every((source) => /deduped/i.test(source.filePath)),
+    ).toBe(true);
+
+    const catalog = buildCatalogFromFiles([postedFile, untitledFile, titledFile]);
+    expect(catalog.collection.sourceFiles.some((file) => /9\.16\.26/.test(file))).toBe(false);
+    expect(catalog.collection.sourceFiles.some((file) => /Deduped/.test(file))).toBe(true);
+    expect(catalog.collection.titles[0].inCollection).toBe(false);
+    const giver = catalog.holdings.s[catalog.holdings.r[0][2]];
+    expect(giver).toBe("The Giver");
+    expect(catalog.holdings.n).toBe(1);
+    expect(String(catalog.holdings.r[0][0])).toBe("9780544336261");
   });
 });
