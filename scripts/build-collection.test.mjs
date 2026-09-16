@@ -396,6 +396,8 @@ const HOPKINS_EXCLUSIONS = [
   { title: "Glass", author: "Ellen Hopkins" },
 ];
 
+const HANDMAID_EXCLUSIONS = [{ title: "The Handmaid's Tale", author: "Margaret Atwood" }];
+
 describe("posted title exclusions", () => {
   it("matches Crank / Glass title variants with Ellen Hopkins author orderings", () => {
     expect(isExcludedPostedTitle("CRANK.", "Hopkins, Ellen.", HOPKINS_EXCLUSIONS)).toBe(true);
@@ -462,15 +464,16 @@ describe("posted title exclusions", () => {
     expect(posted.stats.holdingsLinkedToPosted).toBe(0);
   });
 
-  it("loads the checked-in exclusions file for Crank and Glass by Ellen Hopkins", () => {
+  it("loads the checked-in exclusions file for Crank, Glass, and The Handmaid's Tale", () => {
     const loaded = loadPostedExclusions(join(process.cwd(), "data", "exclusions.json"));
     expect(loaded).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ title: "Crank", author: "Ellen Hopkins" }),
         expect.objectContaining({ title: "Glass", author: "Ellen Hopkins" }),
+        expect.objectContaining({ title: "The Handmaid's Tale", author: "Margaret Atwood" }),
       ]),
     );
-    expect(loaded).toHaveLength(2);
+    expect(loaded).toHaveLength(3);
   });
 
   it("honors exclusions when reading a real posted spreadsheet", () => {
@@ -488,6 +491,93 @@ describe("posted title exclusions", () => {
     expect(payload.uniqueTitleCount).toBe(1);
     expect(payload.titles[0].title).toBe("Impulse");
     expect(payload.stats.skippedExcludedRows).toBe(2);
+  });
+
+  it("matches The Handmaid's Tale title variants with Margaret Atwood author orderings", () => {
+    expect(isExcludedPostedTitle("The Handmaid's Tale", "Atwood, Margaret", HANDMAID_EXCLUSIONS)).toBe(true);
+    expect(isExcludedPostedTitle("Handmaid's Tale", "Margaret Atwood", HANDMAID_EXCLUSIONS)).toBe(true);
+    expect(isExcludedPostedTitle("THE HANDMAID'S TALE", "ATWOOD, MARGARET.", HANDMAID_EXCLUSIONS)).toBe(true);
+    expect(isExcludedPostedTitle("The Handmaid’s Tale", "Atwood, Margaret, 1939-", HANDMAID_EXCLUSIONS)).toBe(true);
+  });
+
+  it("does not match other Margaret Atwood titles or other Handmaid books", () => {
+    expect(isExcludedPostedTitle("The Testaments", "Atwood, Margaret", HANDMAID_EXCLUSIONS)).toBe(false);
+    expect(isExcludedPostedTitle("Oryx and Crake", "Margaret Atwood", HANDMAID_EXCLUSIONS)).toBe(false);
+    expect(isExcludedPostedTitle("The Handmaid's Tale", "Nault, Renee", HANDMAID_EXCLUSIONS)).toBe(false);
+    expect(isExcludedPostedTitle("Women Heroes of World War II", "Atwood, Kathryn J.", HANDMAID_EXCLUSIONS)).toBe(false);
+  });
+
+  it("drops excluded Handmaid's Tale posted rows so a later import cannot restore them as approved", () => {
+    const payload = buildCollection(
+      [
+        rows([
+          {
+            Title: "The Handmaid's Tale",
+            Author: "Atwood, Margaret",
+            ISBN: "9780385490818",
+            "Source Batch": "Sep 2025",
+            Level: "High",
+          },
+          {
+            Title: "HANDMAID'S TALE",
+            Author: "Margaret Atwood",
+            ISBN: "9780547345666",
+            "Source Batch": "All Campuses",
+            Level: "High",
+          },
+          {
+            Title: "The Testaments",
+            Author: "Atwood, Margaret",
+            ISBN: "9780525565697",
+            "Source Batch": "Oct 2025",
+            Level: "High",
+          },
+        ]),
+        {
+          filePath: "ebook-list-A.xlsx",
+          label: "ebook-list-A.xlsx",
+          kind: "ebook-order",
+          rows: [{ Title: "THE HANDMAID'S TALE", Author: "ATWOOD, MARGARET", ISBN: "9780385490999", Edition: "EBOOK" }],
+        },
+      ],
+      { exclusions: HANDMAID_EXCLUSIONS },
+    );
+
+    expect(payload.stats.skippedExcludedRows).toBe(3);
+    expect(payload.titles.map((title) => title.title)).toEqual(["The Testaments"]);
+    expect(payload.titles.find((title) => titleKey(title.title) === "handmaid s tale")).toBeUndefined();
+  });
+
+  it("does not treat Follett-only Handmaid's Tale holdings as posted", () => {
+    const posted = buildCollection(
+      [
+        rows([
+          { Title: "The Handmaid's Tale", Author: "Margaret Atwood", ISBN: "9780385490818", "Source Batch": "Sep 2025" },
+          { Title: "Harbor Lights", Author: "Ng, C", ISBN: "9787777777777", "Source Batch": "Apr 2026" },
+        ]),
+      ],
+      { exclusions: HANDMAID_EXCLUSIONS },
+    );
+    const ingested = ingestFollettRows([
+      {
+        Author: "Atwood, Margaret.",
+        ISBN: "9780385490818",
+        "Material Type": "Book",
+        "Title/Subtitle": "The Handmaid's Tale",
+      },
+      {
+        Author: "Atwood, Margaret.",
+        ISBN: "9780547345666",
+        "Material Type": "eBook",
+        "Title/Subtitle": "Handmaid's Tale",
+      },
+    ]);
+    const compact = attachHoldingsToCollection(posted, ingested);
+    expect(posted.titles.map((title) => title.title)).toEqual(["Harbor Lights"]);
+    expect(posted.titles[0].posted).not.toBe(false);
+    expect(compact.n).toBe(1);
+    expect(titleKey(compact.s[compact.r[0][2]])).toBe("handmaid s tale");
+    expect(posted.stats.holdingsLinkedToPosted).toBe(0);
   });
 });
 
@@ -690,6 +780,35 @@ describe("Sora export", () => {
     expect(crank?.inCollection).toBe(true);
     expect(crank?.formats.ebook).toBe(true);
     expect(payload.titles.find((title) => /hola/i.test(title.title))).toBeUndefined();
+  });
+
+  it("keeps a Sora-only Handmaid's Tale card as In collection, not posted", () => {
+    const payload = buildCollection(
+      [
+        rows([{ Title: "Impulse", Author: "Hopkins, Ellen", ISBN: "9781416903567", "Source Batch": "Nov 2025" }]),
+        {
+          filePath: "Sora-titles.xlsx",
+          label: "Sora-titles.xlsx",
+          kind: "sora",
+          rows: [
+            {
+              TitleID: 1,
+              Title: "The Handmaid's Tale",
+              Creator: "Atwood, Margaret",
+              ISBN: "9780385490818",
+              Format: "Ebook",
+              "Content access levels": "High School",
+            },
+          ],
+        },
+      ],
+      { exclusions: HANDMAID_EXCLUSIONS },
+    );
+    const handmaid = payload.titles.find((title) => titleKey(title.title) === "handmaid s tale");
+    expect(handmaid?.posted).toBe(false);
+    expect(handmaid?.inCollection).toBe(true);
+    expect(handmaid?.formats.ebook).toBe(true);
+    expect(payload.titles.find((title) => title.title === "Impulse")?.posted).not.toBe(false);
   });
 
   it("detects a Sora workbook and does not duplicate a matching posted title", () => {
