@@ -184,14 +184,28 @@ export function loadPostedExclusions(filePath) {
     .map((item) => ({
       title: cell(item.title),
       author: cell(item.author),
+      hideFromDesk: Boolean(item.hideFromDesk),
     }))
     .filter((item) => item.title && item.author);
+}
+
+export function exclusionTitleMatches(title, exclusionTitle) {
+  const key = titleKey(title);
+  const want = titleKey(exclusionTitle);
+  if (!key || !want) return false;
+  return key === want || key.startsWith(`${want} `);
 }
 
 export function isExcludedPostedTitle(title, author, exclusions = []) {
   const key = titleKey(title);
   if (!key || !exclusions.length) return false;
   return exclusions.some((item) => titleKey(item.title) === key && authorsMatch(author, item.author));
+}
+
+/** Drop Follett/Sora (and posted) cards so they never appear on the desk. Matches the exclusion title, plus longer titles that start with it (study guides named after the work). */
+export function isHiddenFromDesk(title, exclusions = []) {
+  if (!title || !exclusions.length) return false;
+  return exclusions.some((item) => item.hideFromDesk && exclusionTitleMatches(title, item.title));
 }
 
 export function isbnDigits(value) {
@@ -763,7 +777,10 @@ export function buildCollection(sources, { exclusions = [] } = {}) {
       const title = cell(row.Title);
       const isbns = collectIsbns(row);
       if (!title && !isbns.size) continue;
-      if (row._presence !== "holdings" && isExcludedPostedTitle(title, cell(row.Author), exclusions)) {
+      if (
+        isHiddenFromDesk(title, exclusions) ||
+        (row._presence !== "holdings" && isExcludedPostedTitle(title, cell(row.Author), exclusions))
+      ) {
         skippedExcludedRows += 1;
         continue;
       }
@@ -794,11 +811,12 @@ function follettDisplayTitle(row) {
   return cell(row.Title) || cell(row["Title/Subtitle"]);
 }
 
-export function ingestFollettRows(rows, { batch = FOLLETT_BATCH } = {}) {
+export function ingestFollettRows(rows, { batch = FOLLETT_BATCH, exclusions = [] } = {}) {
   const byIsbn = new Map();
   let accepted = 0;
   let skippedNoIsbn = 0;
   let skippedType = 0;
+  let skippedHidden = 0;
   let titled = 0;
 
   for (const raw of rows) {
@@ -814,8 +832,12 @@ export function ingestFollettRows(rows, { batch = FOLLETT_BATCH } = {}) {
       skippedNoIsbn += 1;
       continue;
     }
-    accepted += 1;
     const title = follettDisplayTitle(row);
+    if (isHiddenFromDesk(title, exclusions) || (!title && isHiddenFromDesk(cell(row["Series Title"]), exclusions))) {
+      skippedHidden += 1;
+      continue;
+    }
+    accepted += 1;
     if (title) titled += 1;
     let rec = byIsbn.get(isbn13);
     if (!rec) {
@@ -842,7 +864,7 @@ export function ingestFollettRows(rows, { batch = FOLLETT_BATCH } = {}) {
     if (!rec.isbn10 && parsed[0].isbn10) rec.isbn10 = parsed[0].isbn10;
   }
 
-  return { batch, byIsbn, accepted, titled, skippedNoIsbn, skippedType };
+  return { batch, byIsbn, accepted, titled, skippedNoIsbn, skippedType, skippedHidden };
 }
 
 function internString(map, value) {
@@ -1013,7 +1035,7 @@ function findTitledCardForHolding(rec, titledByKey) {
   );
 }
 
-export function attachHoldingsToCollection(payload, ingested) {
+export function attachHoldingsToCollection(payload, ingested, { exclusions = [] } = {}) {
   const byDigits = new Map();
   for (const title of payload.titles) {
     if (title.posted == null) title.posted = true;
@@ -1028,6 +1050,7 @@ export function attachHoldingsToCollection(payload, ingested) {
   const remaining = [];
   let linked = 0;
   for (const rec of ingested.byIsbn.values()) {
+    if (isHiddenFromDesk(rec.title, exclusions) || (!rec.title && isHiddenFromDesk(rec.series, exclusions))) continue;
     const hit = byDigits.get(rec.isbn13) || (rec.isbn10 ? byDigits.get(rec.isbn10) : null);
     if (!hit) {
       remaining.push(rec);
@@ -1043,6 +1066,7 @@ export function attachHoldingsToCollection(payload, ingested) {
   const titledByKey = indexTitledCards(payload.titles);
   const leftover = [];
   for (const rec of remaining) {
+    if (isHiddenFromDesk(rec.title, exclusions) || (!rec.title && isHiddenFromDesk(rec.series, exclusions))) continue;
     const hit = findTitledCardForHolding(rec, titledByKey);
     if (!hit) {
       leftover.push(rec);
@@ -1111,10 +1135,10 @@ export function buildCatalogFromFiles(filePaths, { relativeTo, exclusions = [] }
   if (selectedFollett.length) {
     const ingested = ingestFollettRows(
       selectedFollett.flatMap((source) => source.rows),
-      { batch: FOLLETT_BATCH },
+      { batch: FOLLETT_BATCH, exclusions },
     );
     for (const source of selectedFollett) collection.sourceFiles.push(source.label);
-    holdings = attachHoldingsToCollection(collection, ingested);
+    holdings = attachHoldingsToCollection(collection, ingested, { exclusions });
   }
   return { collection, holdings };
 }

@@ -8,12 +8,13 @@
  * Re-running with the same files will not duplicate titles. Matching is by
  * normalized title and ISBN; posted dates and ISBNs are combined.
  *
- * Posted titles listed in data/exclusions.json (normalized title + author)
- * are skipped so they cannot return to the approved / posted-for-review list.
- * Follett Destiny holdings are written to public/data/holdings.json as a
- * compact title+ISBN index so the desk can search ~200k items without shipping
- * a verbose object per row. Titled district reports group leftover rows onto
- * one card per normalized title.
+ * Titles listed in data/exclusions.json (normalized title + author) are skipped
+ * so they cannot return to the approved / posted-for-review list. Entries with
+ * hideFromDesk also drop Follett/Sora holdings cards (and same-title study
+ * guides) so desk search returns no match. Follett Destiny holdings are written
+ * to public/data/holdings.json as a compact title+ISBN index so the desk can
+ * search ~200k items without shipping a verbose object per row. Titled district
+ * reports group leftover rows onto one card per normalized title.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -59,7 +60,7 @@ if (collection.stats.skippedDuplicateRows) {
 }
 if (collection.stats.skippedExcludedRows) {
   console.log(
-    `Skipped ${collection.stats.skippedExcludedRows} excluded posted title row${collection.stats.skippedExcludedRows === 1 ? "" : "s"}`,
+    `Skipped ${collection.stats.skippedExcludedRows} excluded title row${collection.stats.skippedExcludedRows === 1 ? "" : "s"}`,
   );
 }
 console.log(`Unique titles: ${collection.uniqueTitleCount}`);

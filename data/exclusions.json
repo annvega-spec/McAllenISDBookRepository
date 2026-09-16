@@ -13,7 +13,8 @@
     {
       "title": "The Handmaid's Tale",
       "author": "Margaret Atwood",
-      "note": "Removed from the approved / posted-for-community-review list at librarian request. Follett holdings-only copies may remain searchable as In collection."
+      "hideFromDesk": true,
+      "note": "Removed from Collection Check entirely at librarian request. Import drops posted rows and Follett/Sora holdings cards (including same-title study guides) so desk search returns no match."
     }
   ]
 }

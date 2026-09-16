@@ -11,6 +11,7 @@ import {
   FOLLETT_FORMAT,
   ingestFollettRows,
   isExcludedPostedTitle,
+  isHiddenFromDesk,
   isSoraStaffOnly,
   loadPostedExclusions,
   pickFollettSources,
@@ -397,6 +398,7 @@ const HOPKINS_EXCLUSIONS = [
 ];
 
 const HANDMAID_EXCLUSIONS = [{ title: "The Handmaid's Tale", author: "Margaret Atwood" }];
+const HANDMAID_DESK_EXCLUSIONS = [{ title: "The Handmaid's Tale", author: "Margaret Atwood", hideFromDesk: true }];
 
 describe("posted title exclusions", () => {
   it("matches Crank / Glass title variants with Ellen Hopkins author orderings", () => {
@@ -468,9 +470,9 @@ describe("posted title exclusions", () => {
     const loaded = loadPostedExclusions(join(process.cwd(), "data", "exclusions.json"));
     expect(loaded).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ title: "Crank", author: "Ellen Hopkins" }),
-        expect.objectContaining({ title: "Glass", author: "Ellen Hopkins" }),
-        expect.objectContaining({ title: "The Handmaid's Tale", author: "Margaret Atwood" }),
+        expect.objectContaining({ title: "Crank", author: "Ellen Hopkins", hideFromDesk: false }),
+        expect.objectContaining({ title: "Glass", author: "Ellen Hopkins", hideFromDesk: false }),
+        expect.objectContaining({ title: "The Handmaid's Tale", author: "Margaret Atwood", hideFromDesk: true }),
       ]),
     );
     expect(loaded).toHaveLength(3);
@@ -578,6 +580,139 @@ describe("posted title exclusions", () => {
     expect(compact.n).toBe(1);
     expect(titleKey(compact.s[compact.r[0][2]])).toBe("handmaid s tale");
     expect(posted.stats.holdingsLinkedToPosted).toBe(0);
+  });
+
+  it("matches hideFromDesk on the novel title and longer titles that start with it", () => {
+    expect(isHiddenFromDesk("The Handmaid's Tale", HANDMAID_DESK_EXCLUSIONS)).toBe(true);
+    expect(isHiddenFromDesk("HANDMAID'S TALE", HANDMAID_DESK_EXCLUSIONS)).toBe(true);
+    expect(isHiddenFromDesk("The handmaid's tale, by Margaret Atwood", HANDMAID_DESK_EXCLUSIONS)).toBe(true);
+    expect(isHiddenFromDesk("The Testaments", HANDMAID_DESK_EXCLUSIONS)).toBe(false);
+    expect(isHiddenFromDesk("Oryx and Crake", HANDMAID_DESK_EXCLUSIONS)).toBe(false);
+    expect(isHiddenFromDesk("Glory O'Brien's history of the future", HANDMAID_DESK_EXCLUSIONS)).toBe(false);
+    expect(isHiddenFromDesk("The Handmaid's Tale", HANDMAID_EXCLUSIONS)).toBe(false);
+    expect(isHiddenFromDesk("Crank", HOPKINS_EXCLUSIONS)).toBe(false);
+  });
+
+  it("drops hideFromDesk holdings so they never become In collection cards", () => {
+    const payload = buildCollection(
+      [
+        rows([
+          {
+            Title: "The Handmaid's Tale",
+            Author: "Margaret Atwood",
+            ISBN: "9780385490818",
+            "Source Batch": "Sep 2025",
+          },
+          {
+            Title: "The Testaments",
+            Author: "Atwood, Margaret",
+            ISBN: "9780525565697",
+            "Source Batch": "Oct 2025",
+          },
+          { Title: "Harbor Lights", Author: "Ng, C", ISBN: "9787777777777", "Source Batch": "Apr 2026" },
+        ]),
+        {
+          filePath: "Sora-titles.xlsx",
+          label: "Sora-titles.xlsx",
+          kind: "sora",
+          rows: [
+            {
+              TitleID: 1,
+              Title: "The Handmaid's Tale",
+              Creator: "Atwood, Margaret",
+              ISBN: "9780547345666",
+              Format: "Ebook",
+              "Content access levels": "High School",
+            },
+            {
+              TitleID: 2,
+              Title: "The Testaments",
+              Creator: "Atwood, Margaret",
+              ISBN: "9780525590484",
+              Format: "Ebook",
+              "Content access levels": "High School",
+            },
+          ],
+        },
+      ],
+      { exclusions: HANDMAID_DESK_EXCLUSIONS },
+    );
+    const ingested = ingestFollettRows(
+      [
+        {
+          Author: "Atwood, Margaret.",
+          ISBN: "9780385490818",
+          "Material Type": "Book",
+          "Title/Subtitle": "The Handmaid's Tale",
+        },
+        {
+          Author: "Atwood, Margaret.",
+          ISBN: "9780547345666",
+          "Material Type": "eBook",
+          "Title/Subtitle": "The handmaid's tale",
+        },
+        {
+          Author: "Weber, Valerie.",
+          ISBN: "9781510537033",
+          "Material Type": "eBook",
+          "Title/Subtitle": "The handmaid's tale",
+        },
+        {
+          Author: "editor, J. Brooks Bouson.",
+          ISBN: "9781587656217",
+          "Material Type": "eBook",
+          "Title/Subtitle": "The handmaid's tale, by Margaret Atwood",
+        },
+        {
+          Author: "Atwood, Margaret, 1939-",
+          ISBN: "9780385543781",
+          "Material Type": "Book",
+          "Title/Subtitle": "The testaments",
+        },
+      ],
+      { exclusions: HANDMAID_DESK_EXCLUSIONS },
+    );
+    const compact = attachHoldingsToCollection(payload, ingested, { exclusions: HANDMAID_DESK_EXCLUSIONS });
+
+    expect(payload.titles.find((title) => titleKey(title.title) === "handmaid s tale")).toBeUndefined();
+    expect(payload.titles.some((title) => titleKey(title.title).startsWith("handmaid s tale"))).toBe(false);
+    expect(payload.titles.find((title) => titleKey(title.title) === "testaments")?.inCollection).toBe(true);
+    expect(payload.titles.find((title) => title.title === "Harbor Lights")).toBeTruthy();
+    expect(ingested.byIsbn.has("9780385490818")).toBe(false);
+    expect(ingested.byIsbn.has("9780547345666")).toBe(false);
+    expect(ingested.byIsbn.has("9781510537033")).toBe(false);
+    expect(ingested.byIsbn.has("9781587656217")).toBe(false);
+    expect(ingested.skippedHidden).toBe(4);
+    for (const row of compact.r) {
+      expect(titleKey(compact.s[row[2]]).startsWith("handmaid s tale")).toBe(false);
+    }
+  });
+
+  it("drops a Sora-only Handmaid's Tale card when hideFromDesk is set", () => {
+    const payload = buildCollection(
+      [
+        rows([{ Title: "Impulse", Author: "Hopkins, Ellen", ISBN: "9781416903567", "Source Batch": "Nov 2025" }]),
+        {
+          filePath: "Sora-titles.xlsx",
+          label: "Sora-titles.xlsx",
+          kind: "sora",
+          rows: [
+            {
+              TitleID: 1,
+              Title: "The Handmaid's Tale",
+              Creator: "Atwood, Margaret",
+              ISBN: "9780385490818",
+              Format: "Ebook",
+              "Content access levels": "High School",
+            },
+          ],
+        },
+      ],
+      { exclusions: HANDMAID_DESK_EXCLUSIONS },
+    );
+    expect(payload.titles.find((title) => titleKey(title.title) === "handmaid s tale")).toBeUndefined();
+    expect(payload.stats.skippedExcludedRows).toBe(1);
+    expect(payload.titles.find((title) => title.title === "Impulse")?.posted).not.toBe(false);
   });
 });
 
