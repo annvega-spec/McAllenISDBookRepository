@@ -58,7 +58,7 @@ A push to `main` also builds and publishes the live GitHub Pages site, including
 - If nothing matches, the desk shows **DON'T HAVE IT**, plus **Did you mean…** when a close title exists.
 - Source-batch and level chips browse the posted lists. Follett holdings-only rows (no posted title) are found by search, not by paging through 200k cards.
 
-The same book may appear on more than one spreadsheet (different ISBNs or posting months). The desk shows each unique title once: matching ignores capital letters, extra spaces, punctuation, and leading a/an/the, then lists every approved ISBN, author, posted date, and level on that one card. Untitled Follett holdings that share an ISBN with a posted title attach to that card instead of becoming a blank duplicate.
+The same book may appear on more than one spreadsheet (different ISBNs or posting months). The desk shows each unique title once: matching ignores capital letters, extra spaces, punctuation, and leading a/an/the, then lists every approved ISBN, author, posted date, and level on that one card. Untitled Follett holdings that share an ISBN with a posted title attach to that card instead of becoming a blank duplicate. Follett Sound/Recording (audiobook) ISBNs attach onto an existing titled card when the ISBN already sits on that card or the series title + author matches; a new holdings row is created only when that audiobook is not already represented as Book or eBook.
 
 ## Spreadsheet sources
 
@@ -68,7 +68,7 @@ Current additional sources:
 
 | File | What it is | How it is imported |
 | --- | --- | --- |
-| `data/incoming/District-Report-9.16.26.xlsx` | Follett Destiny district holdings (sheet `District Report 9.16.26`) | Book and eBook rows that have an ISBN. Video, Kit, and other material types are skipped. There is no Title column; Series Title is a weak display fallback only. Status is **In collection**. Source batch: `Follett 9.16.26`. Compacted to `public/data/holdings.json` (unique ISBNs, interned author/series) so the desk does not load 365k verbose objects. |
+| `data/incoming/District-Report-9.16.26.xlsx` | Follett Destiny district holdings (sheet `District Report 9.16.26`) | Book, eBook, Sound, and Recording rows that have an ISBN. Video, Kit, and other material types are skipped. Sound/Recording are tagged **Audio**. There is no Title column — match audiobooks onto existing titled cards by ISBN first, then series title + author; Series Title is a weak display fallback only for audio-only new rows. Do not invent titles. Status is **In collection**. Source batch: `Follett 9.16.26`. Compacted to `public/data/holdings.json` (unique ISBNs, interned author/series) so the desk does not load 365k verbose objects. |
 | `data/incoming/All-Campuses.xlsx` | Posted/approved campus list (sheet `All Campuses`) | Title, author, all ISBN columns. Excel scientific-notation ISBNs such as `9.781516080236E12` are stored as `9781516080236`. Level comes from the first column (Elementary / Middle / High). Source batch: `All Campuses`. |
 | `data/incoming/ebook-list-A.xlsx` | eBook order (sheet `Page 1`) | Title, author, ISBN, Edition. Format: eBook. Source batch: `eBook order`. |
 | `data/incoming/ebook-list-B.xlsx` | eBook order (sheet `Page 1`) | Same columns and rules as list A. |
@@ -87,7 +87,7 @@ When the district sends a **new** posted-title Excel file, add it. Do not throw 
    npm run import
    ```
 
-   This reads the original spreadsheet plus everything in `data/incoming`, matches books by title (ignoring capital letters, extra spaces, punctuation, and leading a/an/the) and ISBN, and combines all ISBNs and posted months for each title. Untitled Follett holdings merge onto a titled posted card when the ISBN matches. Running the same step again with the same files will not double the list. Stats count unique titles, not spreadsheet rows.
+   This reads the original spreadsheet plus everything in `data/incoming`, matches books by title (ignoring capital letters, extra spaces, punctuation, and leading a/an/the) and ISBN, and combines all ISBNs and posted months for each title. Untitled Follett holdings merge onto a titled posted card when the ISBN matches. Sound/Recording audiobook ISBNs union onto that same card when they match by ISBN or by series title + author. Running the same step again with the same files will not double the list. Stats count unique titles, not spreadsheet rows.
 3. **Refresh the desk.** If you are testing on your computer and the desk is already open, reload the browser page. After the change is on `main`, wait for GitHub Actions to finish — the live bookmark updates by itself.
 
 Leave the new Excel files in `data/incoming` after importing so the next update still includes them. Skip Excel lock files whose names start with `~$`.
@@ -110,7 +110,7 @@ Only do this if you received a **full** new master workbook meant to stand in fo
 npm test
 ```
 
-Covers import counts, merge/idempotent extra spreadsheets, ISBN cleanup (including scientific notation), untitled Follett + posted ISBN grouping, and lookups such as “101 Dalmatians”, All Campuses titles, eBook orders, and Follett ISBNs.
+Covers import counts, merge/idempotent extra spreadsheets, ISBN cleanup (including scientific notation), untitled Follett + posted ISBN grouping, Follett Sound/Recording audiobook alignment, and lookups such as “101 Dalmatians”, All Campuses titles, eBook orders, and Follett ISBNs.
 
 ## Stack
 

@@ -26,6 +26,20 @@ export function normalizeLoose(value: string): string {
   return collapseWhitespace(stripPunctuation(value.toLowerCase()));
 }
 
+export function authorTokens(author: string): string[] {
+  return normalizeLoose(author).split(" ").filter(Boolean);
+}
+
+/** Either author token set is a subset of the other (handles extra illustrators). */
+export function authorsCompatible(left: string, right: string): boolean {
+  const a = new Set(authorTokens(left));
+  const b = new Set(authorTokens(right));
+  if (!a.size || !b.size) return false;
+  const aInB = [...a].every((token) => b.has(token));
+  const bInA = [...b].every((token) => a.has(token));
+  return aInB || bInA;
+}
+
 export function isbnDigits(value: string): string {
   return value.replace(/[^0-9Xx]/g, "").toUpperCase();
 }
