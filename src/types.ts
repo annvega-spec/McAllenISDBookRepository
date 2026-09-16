@@ -31,7 +31,8 @@ export type TitleRecord = {
 
 export type CollectionData = {
   generatedAt: string;
-  sourceFile: string;
+  sourceFiles?: string[];
+  sourceFile?: string;
   sheet: string;
   rowCount: number;
   uniqueTitleCount: number;
@@ -42,6 +43,7 @@ export type CollectionData = {
     titlesByBatch: Record<string, number>;
     rowsByLevel: Record<string, number>;
     titlesByLevel: Record<string, number>;
+    skippedDuplicateRows?: number;
   };
   titles: TitleRecord[];
 };

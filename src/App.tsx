@@ -173,13 +173,14 @@ function Desk({ data }: { data: CollectionData }) {
               <li>A posted title opens an In collection card with approved ISBNs and the period it was posted.</li>
               <li>If it is not on the list, the desk will say so immediately.</li>
               <li>Use posted period or level chips to browse when you are not searching.</li>
+              <li>New posted-title Excel files go in the data/incoming folder; see the README to add them to this desk.</li>
             </ol>
           </section>
         ) : null}
 
         {!searching && !pending ? listPanel : null}
       </main>
-      <Footer />
+      <Footer generatedAt={data.generatedAt} sourceCount={data.sourceFiles?.length} />
     </div>
   );
 }
