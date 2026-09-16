@@ -8,6 +8,7 @@ import { ResultsList } from "./components/ResultsList";
 import { SearchBox } from "./components/SearchBox";
 import { StatsStrip } from "./components/StatsStrip";
 import { useDebouncedValue } from "./hooks";
+import { collapseCollection } from "./lib/group";
 import { buildHoldingsIndex, lookupHoldingIsbn, type CompactHoldings, type HoldingsIndex } from "./lib/holdings";
 import { classifySearch, filterTitles, searchTitles } from "./lib/search";
 import type { CollectionData, TitleRecord } from "./types";
@@ -76,7 +77,7 @@ export default function App() {
 }
 
 function Desk({
-  data,
+  data: raw,
   holdings,
   holdingsReady,
 }: {
@@ -84,6 +85,7 @@ function Desk({
   holdings: CompactHoldings | null;
   holdingsReady: boolean;
 }) {
+  const data = useMemo(() => collapseCollection(raw), [raw]);
   const [query, setQuery] = useState("");
   const [batch, setBatch] = useState("all");
   const [level, setLevel] = useState("all");

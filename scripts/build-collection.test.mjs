@@ -10,6 +10,7 @@ import {
   buildCollectionFromFiles,
   ingestFollettRows,
   rowFingerprint,
+  titleKey,
 } from "../scripts/lib/build-collection.mjs";
 import { parseIsbnCell } from "../scripts/lib/isbn.mjs";
 
@@ -31,6 +32,7 @@ describe("spreadsheet merge", () => {
     expect(payload.uniqueTitleCount).toBe(1);
     expect(payload.titles[0].isbns).toEqual(expect.arrayContaining(["9780736481571", "9780736481999"]));
     expect(payload.titles[0].batches).toEqual(["Sep 2025", "Oct 2025", "Feb 2026"]);
+    expect(payload.rowCount).toBeGreaterThan(payload.uniqueTitleCount);
   });
 
   it("does not drop a title that is missing from a later spreadsheet", () => {
@@ -68,6 +70,33 @@ describe("spreadsheet merge", () => {
     expect(payload.titles[0].batches).toEqual(["Sep 2025", "Oct 2025"]);
   });
 
+  it("collapses titles that differ only by article or punctuation and unions ISBNs", () => {
+    const payload = buildCollection([
+      rows([
+        {
+          Title: "Plate of Hope",
+          Author: "Erin Frankel",
+          ISBN: "9780593380581",
+          "Source Batch": "Oct 2025",
+          Level: "Elementary",
+        },
+      ]),
+      rows([
+        {
+          Title: "A Plate of Hope!",
+          Author: "Frankel, Erin",
+          "ISBN-13": "9780593380999",
+          "Source Batch": "Sep 2025",
+          Level: "Elementary",
+        },
+      ]),
+    ]);
+    expect(payload.uniqueTitleCount).toBe(1);
+    expect(payload.titles[0].isbns).toEqual(expect.arrayContaining(["9780593380581", "9780593380999"]));
+    expect(payload.titles[0].batches).toEqual(["Sep 2025", "Oct 2025"]);
+    expect(payload.titles[0].authors.length).toBeGreaterThanOrEqual(1);
+  });
+
   it("accepts similar column names on an extra spreadsheet", () => {
     const payload = buildCollection([
       rows([{ Title: "Old", Author: "A", ISBN: "9785555555555", "Source Batch": "Sep 2025" }]),
@@ -90,6 +119,15 @@ describe("spreadsheet merge", () => {
     expect(payload.uniqueTitleCount).toBe(1);
     expect(payload.rowCount).toBe(1);
     expect(payload.stats.skippedDuplicateRows).toBe(1);
+  });
+});
+
+describe("title key", () => {
+  it("matches desk search normalization, including articles and punctuation", () => {
+    expect(titleKey("The 101 Dalmatians!")).toBe("101 dalmatians");
+    expect(titleKey("A Plate of Hope")).toBe("plate of hope");
+    expect(titleKey("DON'T TRUST FISH!")).toBe("don t trust fish");
+    expect(titleKey("Barbie : a fashion fairytale")).toBe("barbie a fashion fairytale");
   });
 });
 
@@ -245,6 +283,57 @@ describe("additional source shapes", () => {
     expect(title.formats.ebook).toBe(true);
     expect(title.editions).toEqual(["26 CHECKOUT SUBSCRIPTION/SINGLE-USER EBOOK"]);
     expect(title.posted).toBe(true);
+  });
+
+  it("unions All Campuses, eBook order, and Follett ISBN onto one normalized title", () => {
+    const posted = buildCollection([
+      rows([
+        {
+          Title: "Don't trust fish",
+          Author: "Sharpson, Neil",
+          ISBN: "9780593616673",
+          "Source Batch": "Sep 2025",
+          Level: "Elementary",
+        },
+      ]),
+      {
+        filePath: "All-Campuses.xlsx",
+        label: "All-Campuses.xlsx",
+        kind: "all-campuses",
+        rows: [
+          {
+            Title: "Don't Trust Fish!",
+            Author: "SHARPSON, NEIL",
+            ISBN: "9780593616680",
+            "Elementary, Middle or High": "Elementary",
+          },
+        ],
+      },
+      {
+        filePath: "ebook-list-A.xlsx",
+        label: "ebook-list-A.xlsx",
+        kind: "ebook-order",
+        rows: [
+          {
+            Title: "DON'T TRUST FISH!",
+            Author: "SHARPSON, NEIL",
+            ISBN: "9780593616680",
+            Edition: "EBOOK",
+          },
+        ],
+      },
+    ]);
+    const ingested = ingestFollettRows([
+      { Author: "Sharpson, Neil", ISBN: "978-0-593-61667-3", "Material Type": "Book", "Series Title": "" },
+    ]);
+    attachHoldingsToCollection(posted, ingested);
+    expect(posted.uniqueTitleCount).toBe(1);
+    const title = posted.titles[0];
+    expect(title.isbns).toEqual(expect.arrayContaining(["9780593616673", "9780593616680"]));
+    expect(title.batches).toEqual(expect.arrayContaining(["Sep 2025", "All Campuses", "eBook order", "Follett 9.16.26"]));
+    expect(title.inCollection).toBe(true);
+    expect(title.formats.ebook).toBe(true);
+    expect(title.editions).toContain("EBOOK");
   });
 });
 
