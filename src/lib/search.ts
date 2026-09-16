@@ -1,12 +1,18 @@
-import type { CollectionData, ScoredTitle, TitleRecord } from "../types";
+import type { CollectionData, ScoredTitle, SourceFilter, TitleRecord } from "../types";
+import { looksLikeIsbnQuery, queryIsbn13 } from "./isbn";
 import {
   diceCoefficient,
   isbnDigits,
   levenshtein,
-  looksLikeIsbn,
   normalizeLoose,
   normalizeTitle,
 } from "./normalize";
+import {
+  hasPosted,
+  lookupOwnedIsbn,
+  type PreparedOwned,
+  searchOwnedAuthors,
+} from "./owned";
 
 const TITLE_EXACT = 1;
 const TITLE_PREFIX = 0.96;
@@ -40,15 +46,42 @@ function authorBlob(title: TitleRecord): string {
   return normalizeLoose(title.authors.join(" "));
 }
 
+function matchesFilters(
+  title: TitleRecord,
+  batch?: string,
+  level?: string,
+  source?: SourceFilter,
+): boolean {
+  if (batch && batch !== "all" && !title.batches.includes(batch)) return false;
+  if (level && level !== "all" && !title.levels.includes(level)) return false;
+  if (source && source !== "all") {
+    if (source === "posted" && !hasPosted(title)) return false;
+    if (source === "owned" && !title.owned) return false;
+    if (source === "ebook-order" && !title.ebookOrder) return false;
+  }
+  return true;
+}
+
 function titleScore(query: string, title: TitleRecord): { score: number; reason: ScoredTitle["reason"] } {
   const raw = query.trim();
   if (!raw) return { score: 0, reason: "title" };
 
-  if (looksLikeIsbn(raw) || /^\d{10,13}$/.test(isbnDigits(raw))) {
+  if (looksLikeIsbnQuery(raw) || /^\d{10,13}$/.test(isbnDigits(raw))) {
     const qDigits = isbnDigits(raw);
-    if (title.isbnDigits.some((isbn) => isbn === qDigits || isbn.includes(qDigits) || qDigits.includes(isbn))) {
+    const q13 = queryIsbn13(raw);
+    if (
+      title.isbnDigits.some(
+        (isbn) =>
+          isbn === qDigits ||
+          isbn === q13 ||
+          isbn.includes(qDigits) ||
+          qDigits.includes(isbn) ||
+          (q13 && isbn.includes(q13)),
+      )
+    ) {
       return { score: ISBN_MATCH, reason: "isbn" };
     }
+    return { score: 0, reason: "isbn" };
   }
 
   const nq = normalizeTitle(raw);
@@ -95,15 +128,18 @@ function titleScore(query: string, title: TitleRecord): { score: number; reason:
 export function searchTitles(
   data: CollectionData,
   query: string,
-  options: { limit?: number; minScore?: number; batch?: string; level?: string } = {},
+  options: {
+    limit?: number;
+    minScore?: number;
+    batch?: string;
+    level?: string;
+    source?: SourceFilter;
+    owned?: PreparedOwned | null;
+  } = {},
 ): ScoredTitle[] {
-  const { limit = 50, minScore = 0.42, batch, level } = options;
+  const { limit = 50, minScore = 0.42, batch, level, source, owned } = options;
   const trimmed = query.trim();
-  const pool = data.titles.filter((title) => {
-    if (batch && batch !== "all" && !title.batches.includes(batch)) return false;
-    if (level && level !== "all" && !title.levels.includes(level)) return false;
-    return true;
-  });
+  const pool = data.titles.filter((title) => matchesFilters(title, batch, level, source));
 
   if (!trimmed) {
     return pool.slice(0, limit).map((title) => ({ title, score: 0, reason: "title" }));
@@ -114,6 +150,23 @@ export function searchTitles(
     const { score, reason } = titleScore(trimmed, title);
     if (score >= minScore) {
       scored.push({ title, score, reason });
+    }
+  }
+
+  if (looksLikeIsbnQuery(trimmed) || queryIsbn13(trimmed)) {
+    const isbnHit = scored.some((item) => item.reason === "isbn");
+    if (!isbnHit) {
+      const ownedHit = lookupOwnedIsbn(owned ?? null, trimmed);
+      if (ownedHit && matchesFilters(ownedHit, batch, level, source)) {
+        scored.unshift({ title: ownedHit, score: ISBN_MATCH, reason: "owned" });
+      }
+    }
+  } else if (!scored.some((item) => item.score >= 0.92)) {
+    const authorHits = searchOwnedAuthors(owned ?? null, trimmed, 8);
+    for (const title of authorHits) {
+      if (!matchesFilters(title, batch, level, source)) continue;
+      if (scored.some((item) => item.title.id === title.id)) continue;
+      scored.push({ title, score: AUTHOR_EXACT, reason: "author" });
     }
   }
 
@@ -130,7 +183,8 @@ export function classifySearch(results: ScoredTitle[]): {
   const top = results[0];
   const second = results[1];
   const confident =
-    top.score >= 0.92 && (!second || top.score - second.score >= 0.04 || top.reason === "isbn");
+    top.score >= 0.92 &&
+    (!second || top.score - second.score >= 0.04 || top.reason === "isbn" || top.reason === "owned");
 
   const close = results
     .filter((item) => item.title.id !== top.title.id && item.score >= 0.58)
@@ -147,10 +201,7 @@ export function filterTitles(
   data: CollectionData,
   batch: string,
   level: string,
+  source: SourceFilter = "all",
 ): TitleRecord[] {
-  return data.titles.filter((title) => {
-    if (batch !== "all" && !title.batches.includes(batch)) return false;
-    if (level !== "all" && !title.levels.includes(level)) return false;
-    return true;
-  });
+  return data.titles.filter((title) => matchesFilters(title, batch, level, source));
 }

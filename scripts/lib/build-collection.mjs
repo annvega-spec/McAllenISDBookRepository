@@ -7,6 +7,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import XLSX from "xlsx";
+import { isbnDigits, normalizeIsbnValue, toIsbn13 } from "./isbn.mjs";
+import { buildOwnedCatalog, ownedIsbnSet } from "./owned-catalog.mjs";
 
 const ISBN_FIELDS = [
   "ISBN-13",
@@ -82,6 +84,14 @@ const HEADER_ALIASES = {
   hornbook: "Horn Book",
   commonsensemedia: "Common Sense Media",
   otherreviews: "Other Reviews",
+  elementarymiddleorhigh: "Level",
+  campus: "Level",
+  qty: "QTY",
+  edition: "Edition",
+  materialtype: "Material Type",
+  seriestitle: "Series Title",
+  follettebook: "Follett eBook",
+  digitalcontentexpiration: "Digital Content Expiration",
 };
 
 export function cell(value) {
@@ -93,9 +103,7 @@ export function titleKey(title) {
   return cell(title).toLowerCase().replace(/\s+/g, " ");
 }
 
-export function isbnDigits(value) {
-  return cell(value).replace(/[^0-9Xx]/g, "").toUpperCase();
-}
+export { isbnDigits, toIsbn13 };
 
 function headerKey(name) {
   return String(name || "")
@@ -113,20 +121,14 @@ export function canonicalizeRow(raw) {
   return out;
 }
 
-function preferredIsbnDisplay(digits, original) {
-  const cleaned = cell(original).replace(/[\s-]/g, "");
-  if (digits.length === 13 || digits.length === 10) return digits;
-  return cleaned || digits;
-}
-
 export function collectIsbns(row) {
   const map = new Map();
   for (const field of ISBN_FIELDS) {
-    const raw = cell(row[field]);
-    if (!raw) continue;
-    const digits = isbnDigits(raw);
-    if (!digits || digits === "0" || digits.length < 8) continue;
-    if (!map.has(digits)) map.set(digits, preferredIsbnDisplay(digits, raw));
+    if (row[field] == null || row[field] === "") continue;
+    for (const item of normalizeIsbnValue(row[field])) {
+      if (!map.has(item.digits)) map.set(item.digits, item.display);
+      if (item.isbn13 && !map.has(item.isbn13)) map.set(item.isbn13, item.isbn13);
+    }
   }
   return map;
 }
@@ -224,6 +226,11 @@ function emptyGroup(key) {
     audiences: new Set(),
     formats: { book: false, ebook: false, audio: false },
     possibleDuplicate: false,
+    posted: false,
+    ebookOrder: false,
+    owned: false,
+    formatNotes: new Set(),
+    ownedSources: new Set(),
     reviews: {
       booklist: new Set(),
       kirkus: new Set(),
@@ -238,7 +245,18 @@ function emptyGroup(key) {
   };
 }
 
-function addRowToGroup(group, row, sourceFile) {
+export function normalizeLevel(value) {
+  const v = cell(value).replace(/\s+/g, " ");
+  const key = v.toLowerCase();
+  if (!key) return "";
+  if (key.includes("vending")) return "Milam Book Vending Machine";
+  if (key.includes("elem")) return "Elementary";
+  if (key.includes("middle")) return "Middle";
+  if (key.includes("high")) return "High";
+  return v;
+}
+
+function addRowToGroup(group, row, sourceFile, kind = "posted") {
   const title = cell(row.Title);
   group.rowCount += 1;
   group.titleCounts.set(title, (group.titleCounts.get(title) || 0) + 1);
@@ -246,18 +264,26 @@ function addRowToGroup(group, row, sourceFile) {
   group.authors.push(cell(row.Author));
   if (sourceFile) group.sourceFiles.add(sourceFile);
 
+  if (kind === "ebook-order") group.ebookOrder = true;
+  else group.posted = true;
+
   const batch = cell(row["Source Batch"]);
   if (batch) group.batches.add(batch);
-  const level = cell(row.Level);
+  const level = normalizeLevel(row.Level);
   if (level) group.levels.add(level);
   const audience = cell(row.Audience);
   if (audience && !/^\d{4}-\d{2}-\d{2}$/.test(audience) && !/^\d+(\.\d+)?$/.test(audience)) {
     group.audiences.add(audience);
   }
 
+  const edition = cell(row.Edition);
+  if (edition) group.formatNotes.add(edition);
+
+  const anyFlag = truthyFlag(row.Book) || truthyFlag(row.eBook) || truthyFlag(row.Audio);
   if (truthyFlag(row.Book)) group.formats.book = true;
-  if (truthyFlag(row.eBook)) group.formats.ebook = true;
+  if (truthyFlag(row.eBook) || kind === "ebook-order") group.formats.ebook = true;
   if (truthyFlag(row.Audio)) group.formats.audio = true;
+  if (!anyFlag && kind !== "ebook-order") group.formats.book = true;
   if (truthyFlag(row["Possible Duplicate"])) group.possibleDuplicate = true;
 
   for (const [digits, display] of collectIsbns(row)) {
@@ -268,6 +294,11 @@ function addRowToGroup(group, row, sourceFile) {
     const raw = cell(row[col]);
     if (!raw || raw.toLowerCase() === "reviews:") continue;
     group.reviews[prop].add(raw);
+  }
+  for (const key of Object.keys(row)) {
+    if (!/^Reviews(_\d+)?$/.test(key)) continue;
+    const raw = cell(row[key]);
+    if (raw && raw.toLowerCase() !== "reviews:") group.reviews.other.add(raw);
   }
 }
 
@@ -289,6 +320,11 @@ function mergeGroupInto(target, source) {
   target.formats.ebook = target.formats.ebook || source.formats.ebook;
   target.formats.audio = target.formats.audio || source.formats.audio;
   target.possibleDuplicate = true;
+  target.posted = target.posted || source.posted;
+  target.ebookOrder = target.ebookOrder || source.ebookOrder;
+  target.owned = target.owned || source.owned;
+  for (const note of source.formatNotes) target.formatNotes.add(note);
+  for (const label of source.ownedSources) target.ownedSources.add(label);
   for (const key of Object.keys(source.reviews)) {
     for (const value of source.reviews[key]) target.reviews[key].add(value);
   }
@@ -370,6 +406,11 @@ function finalizeGroups(groups, sourceFiles) {
         audiences: [...g.audiences].sort((a, b) => a.localeCompare(b)),
         formats: g.formats,
         possibleDuplicate: g.possibleDuplicate,
+        posted: g.posted,
+        owned: g.owned,
+        ebookOrder: g.ebookOrder,
+        formatNotes: [...g.formatNotes],
+        ownedSources: [...g.ownedSources],
         reviews,
         rowCount: g.rowCount,
       };
@@ -441,6 +482,33 @@ export function collectSourceFiles({ masterList, incomingDir, extraFiles = [] })
   return files;
 }
 
+export function detectKind(filePath, read) {
+  const base = basename(filePath || read?.filePath || "").toLowerCase();
+  const sheet = String(read?.sheet || "").toLowerCase();
+  const keys = new Set(Object.keys(read?.rows?.[0] || {}).map((key) => headerKey(key)));
+  if (
+    keys.has("materialtype") &&
+    (keys.has("follettebook") || keys.has("seriestitle") || sheet.includes("district"))
+  ) {
+    return "owned-follett";
+  }
+  if (base.includes("district-report") || sheet.includes("district report")) return "owned-follett";
+  if ((keys.has("qty") && keys.has("edition")) || /^ebook-list/.test(base)) return "ebook-order";
+  return "posted";
+}
+
+export function defaultBatch(filePath, kind) {
+  const base = basename(filePath || "").replace(/\.(xlsx|xls)$/i, "");
+  if (kind === "ebook-order") {
+    const match = base.match(/ebook-list[-_ ]?([a-z0-9]+)/i);
+    return match ? `eBook list ${match[1].toUpperCase()}` : "eBook list";
+  }
+  if (kind === "posted") {
+    return base.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+  return "";
+}
+
 export function buildCollection(sources) {
   const groups = new Map();
   const seen = new Set();
@@ -450,10 +518,14 @@ export function buildCollection(sources) {
 
   for (const source of sources) {
     const label = source.label || source.filePath || "spreadsheet";
+    const kind = source.kind || "posted";
     sourceFiles.push(label);
     for (const raw of source.rows) {
       const row = canonicalizeRow(raw);
       if (!cell(row.Title)) continue;
+      if (!cell(row["Source Batch"]) && source.defaultBatch) {
+        row["Source Batch"] = source.defaultBatch;
+      }
       const fingerprint = rowFingerprint(row);
       if (seen.has(fingerprint)) {
         skippedDuplicateRows += 1;
@@ -463,7 +535,7 @@ export function buildCollection(sources) {
       acceptedRows += 1;
       const key = titleKey(row.Title);
       if (!groups.has(key)) groups.set(key, emptyGroup(key));
-      addRowToGroup(groups.get(key), row, label);
+      addRowToGroup(groups.get(key), row, label, kind);
     }
   }
 
@@ -472,16 +544,71 @@ export function buildCollection(sources) {
   payload.rowCount = acceptedRows;
   payload.stats.skippedDuplicateRows = skippedDuplicateRows;
   payload.stats.rowsByBatch = payload.stats.titlesByBatch;
+  payload.stats.postedTitleCount = payload.titles.filter((title) => title.posted).length;
+  payload.stats.ebookOrderTitleCount = payload.titles.filter((title) => title.ebookOrder).length;
+  payload.stats.ownedIsbnCount = payload.stats.ownedIsbnCount || 0;
   return payload;
 }
 
-export function buildCollectionFromFiles(filePaths, { relativeTo } = {}) {
-  const sources = filePaths.map((filePath) => {
+export function applyOwnedToTitles(collection, owned) {
+  const set = ownedIsbnSet(owned);
+  const labels = owned.sources?.length ? owned.sources : owned.source ? [owned.source] : [];
+  for (const title of collection.titles) {
+    let ownedHit = false;
+    for (const digits of title.isbnDigits) {
+      const isbn13 = toIsbn13(digits);
+      if (isbn13 && set.has(isbn13)) {
+        ownedHit = true;
+        break;
+      }
+    }
+    title.owned = ownedHit;
+    title.ownedSources = ownedHit ? labels : [];
+  }
+  collection.stats.ownedIsbnCount = owned.count || 0;
+  collection.stats.ownedNamedTitleCount = collection.titles.filter((title) => title.owned).length;
+  collection.stats.ownedAndPostedTitleCount = collection.titles.filter((title) => title.owned && title.posted).length;
+  collection.owned = {
+    source: owned.source,
+    sources: owned.sources || (owned.source ? [owned.source] : []),
+    count: owned.count || 0,
+    file: "owned.json",
+    stats: owned.stats || {},
+  };
+  return collection;
+}
+
+function relativeLabel(filePath, relativeTo) {
+  if (relativeTo && filePath.startsWith(relativeTo)) {
+    return filePath.slice(relativeTo.length).replace(/^\//, "");
+  }
+  return filePath;
+}
+
+export function buildDeskData(filePaths, { relativeTo } = {}) {
+  const named = [];
+  const ownedSources = [];
+  for (const filePath of filePaths) {
     const read = readSpreadsheet(filePath);
-    return {
+    const kind = detectKind(filePath, read);
+    const entry = {
       ...read,
-      label: relativeTo && filePath.startsWith(relativeTo) ? filePath.slice(relativeTo.length).replace(/^\//, "") : filePath,
+      kind,
+      defaultBatch: defaultBatch(filePath, kind),
+      label: relativeLabel(filePath, relativeTo),
     };
-  });
-  return buildCollection(sources);
+    if (kind === "owned-follett") ownedSources.push(entry);
+    else named.push(entry);
+  }
+
+  const collection = buildCollection(named);
+  const owned = buildOwnedCatalog(ownedSources);
+  applyOwnedToTitles(collection, owned);
+  const ownedLabels = owned.sourceFiles || [];
+  collection.sourceFiles = [...new Set([...(collection.sourceFiles || []), ...ownedLabels])];
+  return { collection, owned };
+}
+
+export function buildCollectionFromFiles(filePaths, { relativeTo } = {}) {
+  return buildDeskData(filePaths, { relativeTo }).collection;
 }

@@ -343,6 +343,39 @@ body::before {
   color: var(--ok);
 }
 
+.status-pills {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.status-pill {
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  background: #14140f;
+}
+
+.status-pill-posted {
+  color: var(--gold-2);
+  border-color: var(--gold);
+}
+
+.status-pill-owned {
+  color: var(--ok);
+  border-color: rgba(216, 236, 192, 0.45);
+}
+
+.status-pill-ebook-order {
+  color: #c9d4f0;
+  border-color: rgba(180, 196, 230, 0.45);
+}
+
 .match-actions {
   margin-left: auto;
   display: flex;
@@ -646,7 +679,8 @@ a:focus-visible {
   }
 
   .isbn-chip,
-  .batch-pills li {
+  .batch-pills li,
+  .status-pill {
     border-color: #222;
     background: white;
     color: black;
