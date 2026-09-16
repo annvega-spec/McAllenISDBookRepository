@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildHoldingsIndex } from "./lib/holdings";
 import { parseIsbnCell } from "./lib/isbn";
-import { classifySearch, searchTitles } from "./lib/search";
+import { classifySearch, mergeHoldingsIntoResults, searchTitles } from "./lib/search";
 import type { CollectionData, TitleRecord } from "./types";
 
 function title(partial: Partial<TitleRecord> & Pick<TitleRecord, "id" | "title">): TitleRecord {
@@ -88,5 +88,21 @@ describe("holdings-only ISBN search", () => {
     expect(match?.posted).toBe(false);
     expect(match?.titleUnknown).toBe(true);
     expect(match?.isbnDigits).toContain("9780002251181");
+  });
+
+  it("merges a worker holdings hit when posted search is empty", () => {
+    const posted = searchTitles(data, "0002251183");
+    const holding = title({
+      id: "h:9780002251181",
+      title: "",
+      titleUnknown: true,
+      isbnDigits: ["9780002251181", "0002251183"],
+      isbns: ["9780002251181"],
+      posted: false,
+      inCollection: true,
+    });
+    const merged = mergeHoldingsIntoResults("0002251183", posted, [holding]);
+    expect(classifySearch(merged).match?.title.id).toBe("h:9780002251181");
+    expect(classifySearch(merged).match?.title.inCollection).toBe(true);
   });
 });

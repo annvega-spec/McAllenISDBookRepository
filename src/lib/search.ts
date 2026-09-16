@@ -160,6 +160,36 @@ export function searchTitles(
   return scored.slice(0, limit);
 }
 
+export function mergeHoldingsIntoResults(
+  query: string,
+  posted: ScoredTitle[],
+  holdingsTitles: TitleRecord[],
+  options: { limit?: number; minScore?: number } = {},
+): ScoredTitle[] {
+  const { limit = 50, minScore = 0.42 } = options;
+  const trimmed = query.trim();
+  if (!trimmed) return posted.slice(0, limit);
+
+  const isbnQuery = looksLikeIsbnQuery(trimmed) || looksLikeIsbn(trimmed);
+  if (isbnQuery) {
+    if (posted.length) return posted.slice(0, limit);
+    if (holdingsTitles[0]) return [{ title: holdingsTitles[0], score: ISBN_MATCH, reason: "isbn" }];
+    return [];
+  }
+
+  const scored = [...posted];
+  for (const title of holdingsTitles) {
+    if (scored.some((item) => item.title.isbnDigits.some((isbn) => title.isbnDigits.includes(isbn)))) continue;
+    const { score, reason } = titleScore(trimmed, title);
+    const floor = title.title ? Math.max(score, 0.55) : Math.max(score, 0.7);
+    if (floor >= minScore) {
+      scored.push({ title, score: Math.min(floor, 0.9), reason: reason === "title" ? "title" : "author" });
+    }
+  }
+  scored.sort((a, b) => b.score - a.score || (a.title.title || "").localeCompare(b.title.title || ""));
+  return scored.slice(0, limit);
+}
+
 export function classifySearch(results: ScoredTitle[]): {
   match: ScoredTitle | null;
   close: ScoredTitle[];

@@ -8,16 +8,15 @@ import { ResultsList } from "./components/ResultsList";
 import { SearchBox } from "./components/SearchBox";
 import { StatsStrip } from "./components/StatsStrip";
 import { useDebouncedValue } from "./hooks";
-import { buildHoldingsIndex, lookupHoldingIsbn, type CompactHoldings, type HoldingsIndex } from "./lib/holdings";
-import { classifySearch, filterTitles, searchTitles } from "./lib/search";
+import { looksLikeIsbnQuery } from "./lib/isbn";
+import { classifySearch, filterTitles, mergeHoldingsIntoResults, searchTitles } from "./lib/search";
 import type { CollectionData, TitleRecord } from "./types";
+import { useHoldingsWorker } from "./useHoldingsWorker";
 
 const PAGE_SIZE = 40;
 
 export default function App() {
   const [data, setData] = useState<CollectionData | null>(null);
-  const [holdings, setHoldings] = useState<CompactHoldings | null>(null);
-  const [holdingsReady, setHoldingsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -27,21 +26,7 @@ export default function App() {
         if (!response.ok) throw new Error("Could not load the posted title list.");
         return response.json() as Promise<CollectionData>;
       })
-      .then((collection) => {
-        setData(collection);
-        const holdingsUrl = `${import.meta.env.BASE_URL}${collection.holdingsFile || "data/holdings.json"}`;
-        return fetch(holdingsUrl).then((response) => {
-          if (!response.ok) {
-            setHoldingsReady(true);
-            return null;
-          }
-          return response.json() as Promise<CompactHoldings>;
-        });
-      })
-      .then((compact) => {
-        if (compact) setHoldings(compact);
-        setHoldingsReady(true);
-      })
+      .then(setData)
       .catch((err: Error) => setError(err.message));
   }, []);
 
@@ -65,62 +50,88 @@ export default function App() {
         <section className="welcome" aria-busy="true" aria-live="polite">
           <p className="search-kicker">Loading the collection</p>
           <h2>Opening the collection desk…</h2>
-          <p>Posted titles load first. District holdings follow so ISBN lookup stays fast.</p>
+          <p>Posted titles load first. District holdings follow in the background so the browser stays responsive.</p>
         </section>
         <Footer />
       </div>
     );
   }
 
-  return <Desk data={data} holdings={holdings} holdingsReady={holdingsReady} />;
+  return <Desk data={data} />;
 }
 
-function Desk({
-  data,
-  holdings,
-  holdingsReady,
-}: {
-  data: CollectionData;
-  holdings: CompactHoldings | null;
-  holdingsReady: boolean;
-}) {
+function Desk({ data }: { data: CollectionData }) {
   const [query, setQuery] = useState("");
   const [batch, setBatch] = useState("all");
   const [level, setLevel] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [holdingTitles, setHoldingTitles] = useState<TitleRecord[]>([]);
+  const [lookedUp, setLookedUp] = useState<TitleRecord | null>(null);
   const debounced = useDebouncedValue(query, 120);
   const pending = query.trim() !== debounced.trim();
   const searching = debounced.trim().length > 0 && !pending;
-  const holdingsIndex = useMemo<HoldingsIndex | null>(
-    () => (holdings ? buildHoldingsIndex(holdings) : null),
-    [holdings],
-  );
+  const holdings = useHoldingsWorker(data.holdingsFile || "data/holdings.json");
+  const holdingsReady = holdings.status === "ready" || holdings.status === "error";
+
   const filteredBrowse = useMemo(
     () => (searching ? [] : filterTitles(data, batch, level)),
     [data, searching, batch, level],
   );
 
+  const postedResults = useMemo(
+    () => (searching ? searchTitles(data, debounced, { limit: 60, batch, level }) : []),
+    [data, searching, debounced, batch, level],
+  );
+
+  useEffect(() => {
+    if (!searching) {
+      setHoldingTitles([]);
+      return;
+    }
+    let cancelled = false;
+    holdings.search(debounced).then((rows) => {
+      if (!cancelled) setHoldingTitles(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [debounced, searching, holdings.search]);
+
   const results = useMemo(
-    () => (searching ? searchTitles(data, debounced, { limit: 60, batch, level, holdingsIndex }) : []),
-    [data, searching, debounced, batch, level, holdingsIndex],
+    () => mergeHoldingsIntoResults(debounced, postedResults, holdingTitles, { limit: 60 }),
+    [debounced, postedResults, holdingTitles],
   );
 
   const classified = useMemo(() => classifySearch(results), [results]);
   const selected = useMemo<TitleRecord | null>(() => {
+    if (lookedUp && selectedId && lookedUp.id === selectedId) return lookedUp;
     if (!selectedId) return classified.match?.title ?? null;
-    if (selectedId.startsWith("h:") && holdingsIndex) {
-      const fromResults = results.find((item) => item.title.id === selectedId)?.title;
-      if (fromResults) return fromResults;
-      return lookupHoldingIsbn(holdingsIndex, selectedId.slice(2)) ?? classified.match?.title ?? null;
-    }
+    const fromResults = results.find((item) => item.title.id === selectedId)?.title;
+    if (fromResults) return fromResults;
     return data.titles.find((title) => title.id === selectedId) ?? classified.match?.title ?? null;
-  }, [data.titles, selectedId, classified.match, holdingsIndex, results]);
+  }, [data.titles, selectedId, classified.match, results, lookedUp]);
 
   useEffect(() => {
     setSelectedId(null);
+    setLookedUp(null);
     setVisibleCount(PAGE_SIZE);
   }, [debounced, batch, level]);
+
+  useEffect(() => {
+    if (!selectedId?.startsWith("h:")) {
+      setLookedUp(null);
+      return;
+    }
+    if (results.some((item) => item.title.id === selectedId)) return;
+    let cancelled = false;
+    holdings.lookup(selectedId.slice(2)).then((title) => {
+      if (!cancelled) setLookedUp(title);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, results, holdings.lookup]);
 
   const browseActive = batch !== "all" || level !== "all";
   const listItems = searching
@@ -129,13 +140,15 @@ function Desk({
       : classified.list.slice(0, 40)
     : filteredBrowse.slice(0, visibleCount).map((title) => ({ title, score: 0, reason: "title" as const }));
 
-  const showNoMatch = searching && !classified.match && classified.list.length === 0;
+  const isbnQuery = looksLikeIsbnQuery(debounced);
+  const waitingOnHoldings = searching && !holdingsReady && !classified.match && (isbnQuery || postedResults.length === 0);
+  const showNoMatch = searching && !classified.match && classified.list.length === 0 && holdingsReady;
   const showSuggestionsOnly =
     searching && !classified.match && classified.list.length > 0 && classified.list[0].score < 0.62;
 
   const searchHint = pending
     ? "Searching…"
-    : !holdingsReady
+    : waitingOnHoldings
       ? "Posted titles are ready. District holdings are still loading for ISBN lookup."
       : !query.trim()
         ? "HAVE IT / DON'T HAVE IT — title, author, or ISBN. Follett holdings without a title are still found by ISBN or author."
@@ -155,10 +168,18 @@ function Desk({
         <MatchCard title={selected} onClose={selectedId ? () => setSelectedId(null) : undefined} />
       ) : null}
 
+      {waitingOnHoldings && !classified.match ? (
+        <section className="no-match" aria-live="polite">
+          <p className="no-match-kicker no-match-kicker-pending">Checking holdings</p>
+          <h2>Still loading Follett Destiny holdings…</h2>
+          <p className="no-match-copy">Posted titles are searchable now. ISBN lookup against the district report finishes in the background.</p>
+        </section>
+      ) : null}
+
       {showNoMatch ? (
         <NoMatch
           query={debounced}
-          suggestions={searchTitles(data, debounced, { limit: 5, minScore: 0.18, batch, level, holdingsIndex })}
+          suggestions={searchTitles(data, debounced, { limit: 5, minScore: 0.18, batch, level })}
           onPick={setSelectedId}
         />
       ) : null}
@@ -170,7 +191,7 @@ function Desk({
   );
 
   const listPanel =
-    (searching && !showNoMatch && !showSuggestionsOnly) || browseActive ? (
+    (searching && !showNoMatch && !showSuggestionsOnly && !waitingOnHoldings) || browseActive ? (
       <>
         <ResultsList
           items={listItems}
