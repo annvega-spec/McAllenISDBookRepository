@@ -171,6 +171,51 @@ describe("Ellen Hopkins posted exclusions", () => {
   });
 });
 
+function isMargaretAtwood(authors: string[]): boolean {
+  const tokens = new Set(normalizeLoose(authors.join(" ")).split(" ").filter(Boolean));
+  return tokens.has("margaret") && tokens.has("atwood");
+}
+
+describe("Margaret Atwood posted exclusions", () => {
+  it("does not list The Handmaid's Tale as posted for community review", () => {
+    const postedHandmaid = data.titles.filter(
+      (title) =>
+        normalizeTitle(title.title) === "handmaid s tale" &&
+        isMargaretAtwood(title.authors) &&
+        title.posted !== false,
+    );
+    expect(postedHandmaid).toHaveLength(0);
+
+    for (const query of ["Handmaid", "Handmaid's Tale", "The Handmaid's Tale", "Handmaid Atwood"]) {
+      const results = searchTitles(data, query, { holdingsIndex });
+      for (const item of results) {
+        if (normalizeTitle(item.title.title) === "handmaid s tale" && isMargaretAtwood(item.title.authors)) {
+          expect(item.title.posted, query).toBe(false);
+        }
+      }
+      const match = classifySearch(results).match?.title;
+      if (match && normalizeTitle(match.title) === "handmaid s tale" && isMargaretAtwood(match.authors)) {
+        expect(match.posted).toBe(false);
+      }
+    }
+
+    const tale = classifySearch(searchTitles(data, "The Handmaid's Tale", { holdingsIndex })).match?.title;
+    expect(tale).toBeTruthy();
+    expect(normalizeTitle(tale!.title)).toBe("handmaid s tale");
+    expect(tale!.posted).toBe(false);
+    expect(tale!.inCollection).toBe(true);
+  });
+
+  it("leaves other Margaret Atwood titles searchable", () => {
+    const testaments = data.titles.find(
+      (title) => /testament/i.test(title.title) && isMargaretAtwood(title.authors),
+    );
+    expect(testaments).toBeTruthy();
+    const match = classifySearch(searchTitles(data, "The Testaments", { holdingsIndex })).match?.title;
+    expect(match && /testament/i.test(match.title)).toBe(true);
+  });
+});
+
 describe("Follett Sound/Recording audiobooks", () => {
   it("attaches an audiobook ISBN onto the existing titled Last Kids on Earth card", () => {
     const results = searchTitles(data, "The Last Kids on Earth", { holdingsIndex });
