@@ -17,8 +17,12 @@ export function stripLeadingArticles(value: string): string {
 }
 
 export function normalizeTitle(value: string): string {
+  const withoutEdition = value
+    .toLowerCase()
+    .replace(/\s*[\(\[]\s*(un)?abridged\s*[\)\]]/gi, " ")
+    .replace(/\s+(un)?abridged\s*$/i, "");
   return stripLeadingArticles(
-    collapseWhitespace(stripPunctuation(value.toLowerCase())),
+    collapseWhitespace(stripPunctuation(withoutEdition)),
   );
 }
 

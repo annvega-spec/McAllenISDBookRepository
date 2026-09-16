@@ -51,7 +51,7 @@ export function MatchCard({ title, onClose }: MatchCardProps) {
   const copy = statusCopy(title);
   const unknown = Boolean(title.titleUnknown || !title.title);
   const postedBatches = title.postedBatches ?? (presence === "holdings" ? [] : title.batches);
-  const holdingsBatches = title.holdingsBatches ?? (title.inCollection ? title.batches.filter((batch) => /^follett/i.test(batch)) : []);
+  const holdingsBatches = title.holdingsBatches ?? (title.inCollection ? title.batches.filter((batch) => /^(follett|sora)/i.test(batch)) : []);
   const isbnLabel = presence === "posted" ? `Approved ISBN${title.isbns.length === 1 ? "" : "s"}` : `ISBN${title.isbns.length === 1 ? "" : "s"}`;
 
   return (

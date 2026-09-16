@@ -131,6 +131,7 @@ describe("title key", () => {
     expect(titleKey("A Plate of Hope")).toBe("plate of hope");
     expect(titleKey("DON'T TRUST FISH!")).toBe("don t trust fish");
     expect(titleKey("Barbie : a fashion fairytale")).toBe("barbie a fashion fairytale");
+    expect(titleKey("13 Little Blue Envelopes (unabridged)")).toBe("13 little blue envelopes");
   });
 });
 
@@ -580,5 +581,171 @@ describe("Follett Sound/Recording audiobooks", () => {
     expect(ingested.skippedNoIsbn).toBe(1);
     expect(ingested.byIsbn.get("9782222222222")?.format).toBe(FOLLETT_FORMAT.audio);
     expect(ingested.byIsbn.get("9783333333333")?.format).toBe(FOLLETT_FORMAT.audio);
+  });
+});
+
+describe("Sora export", () => {
+  it("unions a Sora ebook ISBN onto an existing posted title and does not create a duplicate card", () => {
+    const payload = buildCollection([
+      rows([
+        {
+          Title: "Don't trust fish",
+          Author: "Sharpson, Neil",
+          ISBN: "9780593616673",
+          "Source Batch": "Sep 2025",
+          Level: "Elementary",
+        },
+      ]),
+      {
+        filePath: "Sora-titles.xlsx",
+        label: "Sora-titles.xlsx",
+        kind: "sora",
+        rows: [
+          {
+            TitleID: 1,
+            Title: "Don't Trust Fish!",
+            Creator: "Sharpson, Neil",
+            ISBN: "9780593616680",
+            Format: "Ebook",
+            "Audience/Rating": "Juvenile Fiction",
+            "Content access levels": "Elementary",
+          },
+          {
+            TitleID: 2,
+            Title: "Don't Trust Fish! (unabridged)",
+            Creator: "Sharpson, Neil",
+            ISBN: "9780593616999",
+            Format: "Audiobook",
+            "Audience/Rating": "Juvenile Fiction",
+            "Content access levels": "Elementary",
+          },
+        ],
+      },
+    ]);
+    expect(payload.uniqueTitleCount).toBe(1);
+    const title = payload.titles[0];
+    expect(titleKey(title.title)).toBe("don t trust fish");
+    expect(title.title).toBe("Don't trust fish");
+    expect(title.formats.ebook).toBe(true);
+    expect(title.formats.audio).toBe(true);
+    expect(title.isbnDigits).toEqual(expect.arrayContaining(["9780593616673", "9780593616680", "9780593616999"]));
+    expect(title.inCollection).toBe(true);
+    expect(title.posted).toBe(true);
+    expect(title.batches).toEqual(expect.arrayContaining(["Sep 2025", "Sora 2026-09-16"]));
+    expect(title.holdingsBatches).toEqual(["Sora 2026-09-16"]);
+    expect(title.levels).toEqual(["Elementary"]);
+    expect(title.audiences).toContain("Juvenile Fiction");
+  });
+
+  it("creates a searchable Sora-only row when the title is not already on a card", () => {
+    const payload = buildCollection([
+      rows([{ Title: "Harbor Lights", Author: "Ng, C", ISBN: "9787777777777", "Source Batch": "Apr 2026" }]),
+      {
+        filePath: "Sora-titles.xlsx",
+        label: "Sora-titles.xlsx",
+        kind: "sora",
+        rows: [
+          {
+            TitleID: 9,
+            Title: "Sora Only Adventure",
+            Creator: "Lee, Pat",
+            ISBN: "9781234567897",
+            Format: "Ebook",
+            "Content access levels": "Middle School",
+          },
+        ],
+      },
+    ]);
+    expect(payload.uniqueTitleCount).toBe(2);
+    const sora = payload.titles.find((title) => title.title === "Sora Only Adventure");
+    expect(sora?.posted).toBe(false);
+    expect(sora?.inCollection).toBe(true);
+    expect(sora?.formats.ebook).toBe(true);
+    expect(sora?.levels).toEqual(["Middle"]);
+    expect(sora?.batches).toEqual(["Sora 2026-09-16"]);
+  });
+
+  it("skips Magazine/NTC rows and still honors Crank/Glass posted exclusions", () => {
+    const payload = buildCollection(
+      [
+        rows([{ Title: "Impulse", Author: "Hopkins, Ellen", ISBN: "9781416903567", "Source Batch": "Nov 2025" }]),
+        {
+          filePath: "Sora-titles.xlsx",
+          label: "Sora-titles.xlsx",
+          kind: "sora",
+          rows: [
+            { TitleID: 1, Title: "Crank", Creator: "Hopkins, Ellen", ISBN: "9781416905080", Format: "Ebook", "Content access levels": "High School" },
+            { TitleID: 2, Title: "Hola Ninos", Creator: "", ISBN: "", Format: "Magazine", "Content access levels": "Elementary" },
+            { TitleID: 3, Title: "Weird NTC", Creator: "A", ISBN: "9781111111111", Format: "NTC" },
+          ],
+        },
+      ],
+      { exclusions: [{ title: "Crank", author: "Ellen Hopkins" }] },
+    );
+    expect(payload.titles.map((title) => title.title).sort()).toEqual(["Crank", "Impulse"]);
+    const crank = payload.titles.find((title) => title.title === "Crank");
+    expect(crank?.posted).toBe(false);
+    expect(crank?.inCollection).toBe(true);
+    expect(crank?.formats.ebook).toBe(true);
+    expect(payload.titles.find((title) => /hola/i.test(title.title))).toBeUndefined();
+  });
+
+  it("detects a Sora workbook and does not duplicate a matching posted title", () => {
+    const dir = mkdtempSync(join(tmpdir(), "misd-sora-"));
+    const postedFile = join(dir, "posted.xlsx");
+    const soraFile = join(dir, "Sora-titles.xlsx");
+    const postedSheet = XLSX.utils.json_to_sheet([
+      { Title: "Harbor Lights", Author: "Ng, C", ISBN: "9787777777777", "Source Batch": "Apr 2026" },
+    ]);
+    const postedWb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(postedWb, postedSheet, "Master List");
+    XLSX.writeFile(postedWb, postedFile);
+
+    const soraSheet = XLSX.utils.json_to_sheet([
+      {
+        TitleID: 10,
+        Title: "Harbor Lights",
+        Creator: "Ng, C",
+        ISBN: "9788888888888",
+        Format: "Ebook",
+        "Audience/Rating": "Young Adult Fiction",
+        "Content access levels": "High School",
+        Owned: 1,
+        Subscription: "No",
+      },
+      {
+        TitleID: 11,
+        Title: "Sora Solo",
+        Creator: "Solo, A",
+        ISBN: "9789999999999",
+        Format: "Audiobook",
+        "Content access levels": "Elementary",
+        Owned: 1,
+        Subscription: "No",
+      },
+      {
+        TitleID: 12,
+        Title: "Skip Mag",
+        Creator: "",
+        ISBN: "",
+        Format: "Magazine",
+        "Content access levels": "Elementary",
+        Owned: "Subscription",
+        Subscription: "Yes",
+      },
+    ]);
+    const soraWb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(soraWb, soraSheet, "Title status & usage 2026-09-16");
+    XLSX.writeFile(soraWb, soraFile);
+
+    const catalog = buildCatalogFromFiles([postedFile, soraFile]);
+    expect(catalog.collection.uniqueTitleCount).toBe(2);
+    const harbor = catalog.collection.titles.find((title) => title.title === "Harbor Lights");
+    expect(harbor?.isbnDigits).toEqual(expect.arrayContaining(["9787777777777", "9788888888888"]));
+    expect(harbor?.formats.ebook).toBe(true);
+    expect(harbor?.inCollection).toBe(true);
+    const solo = catalog.collection.titles.find((title) => title.title === "Sora Solo");
+    expect(solo?.formats.audio).toBe(true);
+    expect(solo?.posted).toBe(false);
   });
 });

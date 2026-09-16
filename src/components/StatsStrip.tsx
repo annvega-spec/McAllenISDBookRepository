@@ -30,7 +30,7 @@ export function StatsStrip({ data }: StatsStripProps) {
       <p className="stats-note">
         {levels}
         {holdings
-          ? ` · ${linked.toLocaleString()} posted title${linked === 1 ? "" : "s"} also in the Follett collection · holdings search by ISBN or author`
+          ? ` · ${linked.toLocaleString()} posted title${linked === 1 ? "" : "s"} also in the collection · holdings search by ISBN or author`
           : ""}
       </p>
     </section>

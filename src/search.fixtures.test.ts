@@ -243,3 +243,40 @@ describe("Follett audiobook alignment", () => {
     expect(results[0].title.formats.audio).toBe(true);
   });
 });
+
+describe("Sora title alignment", () => {
+  it("attaches a Sora ISBN onto the existing titled card instead of a second card", () => {
+    const withSora: CollectionData = {
+      ...data,
+      titles: [
+        title({
+          ...data.titles[0],
+          isbns: ["9780736481571", "9780736482000"],
+          isbnDigits: ["9780736481571", "9780736482000"],
+          formats: { book: true, ebook: true, audio: false },
+          inCollection: true,
+          batches: ["Sep 2025", "Sora 2026-09-16"],
+          postedBatches: ["Sep 2025"],
+          holdingsBatches: ["Sora 2026-09-16"],
+        }),
+        title({
+          id: "dal-sora",
+          title: "The 101 Dalmatians",
+          authors: ["Bobowicz, Pamela"],
+          isbns: ["9780736482000"],
+          isbnDigits: ["9780736482000"],
+          batches: ["Sora 2026-09-16"],
+          holdingsBatches: ["Sora 2026-09-16"],
+          posted: false,
+          inCollection: true,
+          formats: { book: false, ebook: true, audio: false },
+        }),
+        data.titles[1],
+      ],
+    };
+    const results = searchTitles(withSora, "101 Dalmatians");
+    expect(results.filter((item) => normalizeTitle(item.title.title) === "101 dalmatians")).toHaveLength(1);
+    expect(results[0].title.isbns).toEqual(expect.arrayContaining(["9780736481571", "9780736482000"]));
+    expect(results[0].title.formats.ebook).toBe(true);
+  });
+});

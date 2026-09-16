@@ -61,7 +61,7 @@ if (collection.stats.skippedExcludedRows) {
     `Skipped ${collection.stats.skippedExcludedRows} excluded posted title row${collection.stats.skippedExcludedRows === 1 ? "" : "s"}`,
   );
 }
-console.log(`Unique posted titles: ${collection.uniqueTitleCount}`);
+console.log(`Unique titles: ${collection.uniqueTitleCount}`);
 console.log(`Posted periods: ${collection.batches.join(", ")}`);
 console.log(`Levels: ${collection.levels.join(", ")}`);
 if (collection.stats.holdingsUniqueIsbns) {
