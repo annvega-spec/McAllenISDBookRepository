@@ -147,3 +147,41 @@ describe("Ellen Hopkins posted exclusions", () => {
     expect(slippers?.posted).not.toBe(false);
   });
 });
+
+describe("Follett Sound/Recording audiobooks", () => {
+  it("attaches an audiobook ISBN onto the existing titled Last Kids on Earth card", () => {
+    const results = searchTitles(data, "The Last Kids on Earth", { holdingsIndex });
+    expect(results.filter((item) => normalizeTitle(item.title.title) === "last kids on earth")).toHaveLength(1);
+    const title = classifySearch(results).match?.title;
+    expect(title?.title).toBe("The Last Kids on Earth");
+    expect(title?.formats.audio).toBe(true);
+    expect(title?.formats.ebook).toBe(true);
+    expect(title?.isbnDigits).toContain("9780525495581");
+    expect(title?.isbnDigits).toContain("9780425287569");
+    expect(title?.inCollection).toBe(true);
+    expect(title?.posted).not.toBe(false);
+
+    const byIsbn = classifySearch(searchTitles(data, "9780525495581", { holdingsIndex })).match?.title;
+    expect(byIsbn?.title).toBe("The Last Kids on Earth");
+    expect(byIsbn?.formats.audio).toBe(true);
+    expect(byIsbn?.isbnDigits).toEqual(expect.arrayContaining(["9780425287569", "9780525495581"]));
+  });
+
+  it("does not dump series audiobooks onto a different Last Kids volume", () => {
+    const results = searchTitles(data, "Last Kids on Earth and the Cosmic Beyond", { holdingsIndex });
+    const title = classifySearch(results).match?.title;
+    expect(title?.title).toBe("Last Kids on Earth and the Cosmic Beyond");
+    expect(title?.isbnDigits).not.toContain("9780525495581");
+  });
+
+  it("returns In collection for an audio-only Destiny ISBN with no book/ebook counterpart", () => {
+    expect(holdingsIndex).not.toBeNull();
+    const results = searchTitles(data, "9780807210260", { holdingsIndex });
+    const title = classifySearch(results).match?.title;
+    expect(title?.inCollection).toBe(true);
+    expect(title?.posted).toBe(false);
+    expect(title?.formats.audio).toBe(true);
+    expect(title?.formats.book).toBe(false);
+    expect(title?.isbnDigits).toContain("9780807210260");
+  });
+});
