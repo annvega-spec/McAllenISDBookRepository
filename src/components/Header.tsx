@@ -12,7 +12,7 @@ export function Header() {
         </div>
       </div>
       <p className="header-aside">
-        Posted title lookup for campus librarians
+        HAVE IT / DON&apos;T HAVE IT for campus librarians
       </p>
     </header>
   );

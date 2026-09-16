@@ -1,4 +1,7 @@
 import type { CollectionData, ScoredTitle, TitleRecord } from "../types";
+import type { HoldingsIndex } from "./holdings";
+import { lookupHoldingIsbn, searchHoldingsTokens } from "./holdings";
+import { isbnQueryDigits, looksLikeIsbnQuery } from "./isbn";
 import {
   diceCoefficient,
   isbnDigits,
@@ -44,23 +47,24 @@ function titleScore(query: string, title: TitleRecord): { score: number; reason:
   const raw = query.trim();
   if (!raw) return { score: 0, reason: "title" };
 
-  if (looksLikeIsbn(raw) || /^\d{10,13}$/.test(isbnDigits(raw))) {
-    const qDigits = isbnDigits(raw);
+  if (looksLikeIsbn(raw) || looksLikeIsbnQuery(raw) || /^\d{10,13}$/.test(isbnDigits(raw))) {
+    const parsed = isbnQueryDigits(raw);
+    const qDigits = parsed || isbnDigits(raw);
     if (title.isbnDigits.some((isbn) => isbn === qDigits || isbn.includes(qDigits) || qDigits.includes(isbn))) {
       return { score: ISBN_MATCH, reason: "isbn" };
     }
   }
 
   const nq = normalizeTitle(raw);
-  const nTitle = normalizeTitle(title.title);
-  const looseTitle = normalizeLoose(title.title);
+  const nTitle = normalizeTitle(title.title || "");
+  const looseTitle = normalizeLoose(title.title || "");
   const looseQuery = normalizeLoose(raw);
 
-  if (nq && nTitle === nq) return { score: TITLE_EXACT, reason: "title" };
-  if (nq && (nTitle.startsWith(`${nq} `) || nTitle.startsWith(nq))) {
+  if (nq && nTitle && nTitle === nq) return { score: TITLE_EXACT, reason: "title" };
+  if (nq && nTitle && (nTitle.startsWith(`${nq} `) || nTitle.startsWith(nq))) {
     return { score: TITLE_PREFIX, reason: "title" };
   }
-  if (nq && (nTitle.includes(` ${nq} `) || nTitle.endsWith(` ${nq}`) || nTitle.includes(nq))) {
+  if (nq && nTitle && (nTitle.includes(` ${nq} `) || nTitle.endsWith(` ${nq}`) || nTitle.includes(nq))) {
     const coverage = nq.length / Math.max(nTitle.length, 1);
     return { score: TITLE_CONTAINS + Math.min(0.07, coverage * 0.07), reason: "title" };
   }
@@ -68,17 +72,18 @@ function titleScore(query: string, title: TitleRecord): { score: number; reason:
   const author = authorBlob(title);
   if (author && (author === looseQuery || author.includes(looseQuery))) {
     const authorScore = author === looseQuery ? AUTHOR_EXACT : 0.72;
-    const overlap = tokenOverlap(nq || looseQuery, nTitle);
+    const overlap = nTitle ? tokenOverlap(nq || looseQuery, nTitle) : 0;
     return { score: Math.max(authorScore, overlap * 0.7), reason: overlap > 0.5 ? "title" : "author" };
+  }
+
+  if (!nTitle) {
+    return { score: 0, reason: "fuzzy" };
   }
 
   const overlap = tokenOverlap(nq || looseQuery, nTitle);
   const dice = diceCoefficient(nq || looseQuery, nTitle);
   const dist = levenshtein(nq || looseQuery, nTitle);
-  const lev =
-    nq && nTitle
-      ? 1 - dist / Math.max(nq.length, nTitle.length, 1)
-      : 0;
+  const lev = nq && nTitle ? 1 - dist / Math.max(nq.length, nTitle.length, 1) : 0;
 
   let score = Math.max(overlap * 0.78, dice * 0.86, lev > 0.72 ? lev * 0.9 : 0);
   if (looseTitle.includes(looseQuery) && looseQuery.length >= 3) {
@@ -92,12 +97,20 @@ function titleScore(query: string, title: TitleRecord): { score: number; reason:
   return { score, reason: score >= 0.9 ? "title" : "fuzzy" };
 }
 
+export type SearchOptions = {
+  limit?: number;
+  minScore?: number;
+  batch?: string;
+  level?: string;
+  holdingsIndex?: HoldingsIndex | null;
+};
+
 export function searchTitles(
   data: CollectionData,
   query: string,
-  options: { limit?: number; minScore?: number; batch?: string; level?: string } = {},
+  options: SearchOptions = {},
 ): ScoredTitle[] {
-  const { limit = 50, minScore = 0.42, batch, level } = options;
+  const { limit = 50, minScore = 0.42, batch, level, holdingsIndex } = options;
   const trimmed = query.trim();
   const pool = data.titles.filter((title) => {
     if (batch && batch !== "all" && !title.batches.includes(batch)) return false;
@@ -109,6 +122,21 @@ export function searchTitles(
     return pool.slice(0, limit).map((title) => ({ title, score: 0, reason: "title" }));
   }
 
+  const isbnQuery = looksLikeIsbnQuery(trimmed) || looksLikeIsbn(trimmed);
+  if (isbnQuery) {
+    const digits = isbnQueryDigits(trimmed);
+    const postedHit = data.titles.find((title) =>
+      title.isbnDigits.some((isbn) => isbn === digits || (digits.length >= 10 && (isbn.includes(digits) || digits.includes(isbn)))),
+    );
+    if (postedHit) {
+      return [{ title: postedHit, score: ISBN_MATCH, reason: "isbn" }];
+    }
+    if (holdingsIndex && digits.length >= 10) {
+      const holding = lookupHoldingIsbn(holdingsIndex, digits);
+      if (holding) return [{ title: holding, score: ISBN_MATCH, reason: "isbn" }];
+    }
+  }
+
   const scored: ScoredTitle[] = [];
   for (const title of pool) {
     const { score, reason } = titleScore(trimmed, title);
@@ -117,7 +145,18 @@ export function searchTitles(
     }
   }
 
-  scored.sort((a, b) => b.score - a.score || a.title.title.localeCompare(b.title.title));
+  const browseFiltered = Boolean(batch && batch !== "all") || Boolean(level && level !== "all");
+  if (holdingsIndex && !isbnQuery && !browseFiltered && trimmed.length >= 3) {
+    const holdingsHits = searchHoldingsTokens(holdingsIndex, trimmed, 12);
+    for (const title of holdingsHits) {
+      if (scored.some((item) => item.title.isbnDigits.some((isbn) => title.isbnDigits.includes(isbn)))) continue;
+      const { score, reason } = titleScore(trimmed, title);
+      const floor = title.title ? Math.max(score, 0.55) : Math.max(score, 0.7);
+      if (floor >= minScore) scored.push({ title, score: Math.min(floor, 0.9), reason: reason === "title" ? "title" : "author" });
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score || (a.title.title || "").localeCompare(b.title.title || ""));
   return scored.slice(0, limit);
 }
 

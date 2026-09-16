@@ -13,7 +13,7 @@ export function FilterBar({ data, batch, level, onBatch, onLevel }: FilterBarPro
   return (
     <section className="filters no-print" aria-label="Browse filters">
       <div className="filter-row">
-        <p className="filter-label">Posted period</p>
+        <p className="filter-label">Source batch</p>
         <div className="chip-row" role="tablist" aria-label="Source batch">
           <Chip active={batch === "all"} onClick={() => onBatch("all")}>
             All periods

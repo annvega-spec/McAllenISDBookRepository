@@ -10,7 +10,7 @@ export function Footer({ generatedAt, sourceCount }: FooterProps) {
 
   return (
     <footer className="site-footer no-print">
-      <p>Titles posted for community review (HB 900 / SB 13)</p>
+      <p>Posted titles (HB 900 / SB 13) and Follett Destiny district holdings</p>
       <p>McAllen ISD Collection Check · Campus librarian desk tool</p>
       {built ? (
         <p>

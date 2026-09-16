@@ -26,7 +26,7 @@ export function SearchBox({ value, onChange, hint }: SearchBoxProps) {
 
   return (
     <section className="search-hero no-print" aria-label="Title search">
-      <p className="search-kicker">Search the posted list</p>
+      <p className="search-kicker">Search one list</p>
       <label className="search-label" htmlFor={id}>
         Title, author, or ISBN
       </label>

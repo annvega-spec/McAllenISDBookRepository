@@ -8,6 +8,7 @@ import { ResultsList } from "./components/ResultsList";
 import { SearchBox } from "./components/SearchBox";
 import { StatsStrip } from "./components/StatsStrip";
 import { useDebouncedValue } from "./hooks";
+import { buildHoldingsIndex, lookupHoldingIsbn, type CompactHoldings, type HoldingsIndex } from "./lib/holdings";
 import { classifySearch, filterTitles, searchTitles } from "./lib/search";
 import type { CollectionData, TitleRecord } from "./types";
 
@@ -15,16 +16,32 @@ const PAGE_SIZE = 40;
 
 export default function App() {
   const [data, setData] = useState<CollectionData | null>(null);
+  const [holdings, setHoldings] = useState<CompactHoldings | null>(null);
+  const [holdingsReady, setHoldingsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const url = `${import.meta.env.BASE_URL}data/collection.json`;
-    fetch(url)
+    const collectionUrl = `${import.meta.env.BASE_URL}data/collection.json`;
+    fetch(collectionUrl)
       .then((response) => {
         if (!response.ok) throw new Error("Could not load the posted title list.");
         return response.json() as Promise<CollectionData>;
       })
-      .then(setData)
+      .then((collection) => {
+        setData(collection);
+        const holdingsUrl = `${import.meta.env.BASE_URL}${collection.holdingsFile || "data/holdings.json"}`;
+        return fetch(holdingsUrl).then((response) => {
+          if (!response.ok) {
+            setHoldingsReady(true);
+            return null;
+          }
+          return response.json() as Promise<CompactHoldings>;
+        });
+      })
+      .then((compact) => {
+        if (compact) setHoldings(compact);
+        setHoldingsReady(true);
+      })
       .catch((err: Error) => setError(err.message));
   }, []);
 
@@ -46,19 +63,27 @@ export default function App() {
       <div className="app-shell">
         <Header />
         <section className="welcome" aria-busy="true" aria-live="polite">
-          <p className="search-kicker">Loading posted titles</p>
+          <p className="search-kicker">Loading the collection</p>
           <h2>Opening the collection desk…</h2>
-          <p>The master list is loading in this browser. No server is required after that.</p>
+          <p>Posted titles load first. District holdings follow so ISBN lookup stays fast.</p>
         </section>
         <Footer />
       </div>
     );
   }
 
-  return <Desk data={data} />;
+  return <Desk data={data} holdings={holdings} holdingsReady={holdingsReady} />;
 }
 
-function Desk({ data }: { data: CollectionData }) {
+function Desk({
+  data,
+  holdings,
+  holdingsReady,
+}: {
+  data: CollectionData;
+  holdings: CompactHoldings | null;
+  holdingsReady: boolean;
+}) {
   const [query, setQuery] = useState("");
   const [batch, setBatch] = useState("all");
   const [level, setLevel] = useState("all");
@@ -67,21 +92,30 @@ function Desk({ data }: { data: CollectionData }) {
   const debounced = useDebouncedValue(query, 120);
   const pending = query.trim() !== debounced.trim();
   const searching = debounced.trim().length > 0 && !pending;
+  const holdingsIndex = useMemo<HoldingsIndex | null>(
+    () => (holdings ? buildHoldingsIndex(holdings) : null),
+    [holdings],
+  );
   const filteredBrowse = useMemo(
     () => (searching ? [] : filterTitles(data, batch, level)),
     [data, searching, batch, level],
   );
 
   const results = useMemo(
-    () => (searching ? searchTitles(data, debounced, { limit: 60, batch, level }) : []),
-    [data, searching, debounced, batch, level],
+    () => (searching ? searchTitles(data, debounced, { limit: 60, batch, level, holdingsIndex }) : []),
+    [data, searching, debounced, batch, level, holdingsIndex],
   );
 
   const classified = useMemo(() => classifySearch(results), [results]);
   const selected = useMemo<TitleRecord | null>(() => {
     if (!selectedId) return classified.match?.title ?? null;
+    if (selectedId.startsWith("h:") && holdingsIndex) {
+      const fromResults = results.find((item) => item.title.id === selectedId)?.title;
+      if (fromResults) return fromResults;
+      return lookupHoldingIsbn(holdingsIndex, selectedId.slice(2)) ?? classified.match?.title ?? null;
+    }
     return data.titles.find((title) => title.id === selectedId) ?? classified.match?.title ?? null;
-  }, [data.titles, selectedId, classified.match]);
+  }, [data.titles, selectedId, classified.match, holdingsIndex, results]);
 
   useEffect(() => {
     setSelectedId(null);
@@ -101,13 +135,19 @@ function Desk({ data }: { data: CollectionData }) {
 
   const searchHint = pending
     ? "Searching…"
-    : !query.trim()
-      ? "Punctuation and leading articles are ignored. Close matches appear if an exact title is not found."
-      : classified.match
-        ? "Posted for review — title found on the master list."
-        : showNoMatch
-          ? "No posted title matched this search."
-          : `${results.length} matching title${results.length === 1 ? "" : "s"}`;
+    : !holdingsReady
+      ? "Posted titles are ready. District holdings are still loading for ISBN lookup."
+      : !query.trim()
+        ? "HAVE IT / DON'T HAVE IT — title, author, or ISBN. Follett holdings without a title are still found by ISBN or author."
+        : classified.match
+          ? classified.match.title.inCollection && classified.match.title.posted !== false
+            ? "HAVE IT — in the Follett collection and posted for review."
+            : classified.match.title.inCollection
+              ? "HAVE IT — in the Follett collection."
+              : "HAVE IT — posted for HB 900 / SB 13 review."
+          : showNoMatch
+            ? "DON'T HAVE IT — no posted title or district holding matched this search."
+            : `${results.length} matching title${results.length === 1 ? "" : "s"}`;
 
   const verdict = (
     <>
@@ -118,7 +158,7 @@ function Desk({ data }: { data: CollectionData }) {
       {showNoMatch ? (
         <NoMatch
           query={debounced}
-          suggestions={searchTitles(data, debounced, { limit: 5, minScore: 0.18, batch, level })}
+          suggestions={searchTitles(data, debounced, { limit: 5, minScore: 0.18, batch, level, holdingsIndex })}
           onPick={setSelectedId}
         />
       ) : null}
@@ -169,11 +209,11 @@ function Desk({ data }: { data: CollectionData }) {
           <section className="welcome no-print">
             <h2>How to use this desk</h2>
             <ol>
-              <li>Search by title first. Author and ISBN also work.</li>
-              <li>A posted title opens an In collection card with approved ISBNs and the period it was posted.</li>
-              <li>If it is not on the list, the desk will say so immediately.</li>
-              <li>Use posted period or level chips to browse when you are not searching.</li>
-              <li>New posted-title Excel files go in the data/incoming folder; see the README to add them to this desk.</li>
+              <li>Search one list: posted review titles and Follett Destiny holdings.</li>
+              <li>HAVE IT means the title is posted for review, already in the collection, or both.</li>
+              <li>DON&apos;T HAVE IT means it is not on the posted list and not in the district holdings file.</li>
+              <li>If Follett has no title, the card still shows ISBN and author.</li>
+              <li>Additional Excel files go in the data/incoming folder; see the README to add them.</li>
             </ol>
           </section>
         ) : null}

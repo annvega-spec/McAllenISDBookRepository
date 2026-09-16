@@ -7,17 +7,22 @@
  *
  * Re-running with the same files will not duplicate titles. Matching is by
  * normalized title and ISBN; posted dates and ISBNs are combined.
+ *
+ * Follett Destiny holdings are written to public/data/holdings.json as a
+ * compact ISBN index so the desk can search ~200k items without shipping
+ * a verbose object per row.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildCollectionFromFiles, collectSourceFiles } from "./lib/build-collection.mjs";
+import { buildCatalogFromFiles, collectSourceFiles } from "./lib/build-collection.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MASTER = join(ROOT, "data", "master-list.xlsx");
 const INCOMING = join(ROOT, "data", "incoming");
 const OUTPUT = join(ROOT, "public", "data", "collection.json");
+const HOLDINGS = join(ROOT, "public", "data", "holdings.json");
 
 const extraFiles = process.argv.slice(2).map((arg) => (isAbsolute(arg) ? arg : resolve(process.cwd(), arg)));
 const files = collectSourceFiles({
@@ -31,23 +36,34 @@ if (!files.length) {
   process.exit(1);
 }
 
-const payload = buildCollectionFromFiles(files, { relativeTo: ROOT });
+const { collection, holdings } = buildCatalogFromFiles(files, { relativeTo: ROOT });
 mkdirSync(dirname(OUTPUT), { recursive: true });
-writeFileSync(OUTPUT, JSON.stringify(payload));
+writeFileSync(OUTPUT, JSON.stringify(collection));
+if (holdings) writeFileSync(HOLDINGS, JSON.stringify(holdings));
 
 const extraCount = files.filter((file) => file !== MASTER).length;
 console.log(`Read ${files.length} spreadsheet${files.length === 1 ? "" : "s"}:`);
 for (const file of files) {
   console.log(`  - ${file.replace(ROOT + "/", "")}`);
 }
-console.log(`Unique listings (after skipping exact re-imports): ${payload.rowCount}`);
-if (payload.stats.skippedDuplicateRows) {
-  console.log(`Skipped ${payload.stats.skippedDuplicateRows} duplicate row${payload.stats.skippedDuplicateRows === 1 ? "" : "s"} already on the list`);
+console.log(`Unique listings (after skipping exact re-imports): ${collection.rowCount}`);
+if (collection.stats.skippedDuplicateRows) {
+  console.log(
+    `Skipped ${collection.stats.skippedDuplicateRows} duplicate row${collection.stats.skippedDuplicateRows === 1 ? "" : "s"} already on the list`,
+  );
 }
-console.log(`Unique titles: ${payload.uniqueTitleCount}`);
-console.log(`Posted periods: ${payload.batches.join(", ")}`);
-console.log(`Levels: ${payload.levels.join(", ")}`);
+console.log(`Unique posted titles: ${collection.uniqueTitleCount}`);
+console.log(`Posted periods: ${collection.batches.join(", ")}`);
+console.log(`Levels: ${collection.levels.join(", ")}`);
+if (collection.stats.holdingsUniqueIsbns) {
+  console.log(
+    `Follett holdings: ${collection.stats.holdingsRows.toLocaleString()} Book/eBook rows with ISBN → ${collection.stats.holdingsUniqueIsbns.toLocaleString()} unique ISBNs (${collection.stats.holdingsLinkedToPosted.toLocaleString()} already on a posted title, ${collection.stats.holdingsOnly.toLocaleString()} holdings-only)`,
+  );
+}
 if (extraCount) {
   console.log(`Additional files from data/incoming (or extra paths): ${extraCount}`);
 }
 console.log(`Wrote ${OUTPUT.replace(ROOT + "/", "")}`);
+if (holdings) {
+  console.log(`Wrote ${HOLDINGS.replace(ROOT + "/", "")} (${holdings.n.toLocaleString()} compact records)`);
+}

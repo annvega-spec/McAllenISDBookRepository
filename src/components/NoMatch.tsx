@@ -1,4 +1,4 @@
-import type { ScoredTitle } from "../types";
+import { displayTitle, presenceOf, type ScoredTitle } from "../types";
 
 type NoMatchProps = {
   query: string;
@@ -9,10 +9,10 @@ type NoMatchProps = {
 export function NoMatch({ query, suggestions, onPick }: NoMatchProps) {
   return (
     <section className="no-match" aria-live="polite">
-      <p className="no-match-kicker">Not in collection</p>
-      <h2>Not found on the posted list</h2>
+      <p className="no-match-kicker">DON&apos;T HAVE IT</p>
+      <h2>Not in collection · Not on the posted list</h2>
       <p className="no-match-copy">
-        No title, author, or ISBN on the current master list matches “{query}”.
+        No title, author, or ISBN on the posted review lists or the Follett district holdings matches “{query}”.
       </p>
       {suggestions.length ? (
         <div className="did-you-mean">
@@ -21,9 +21,10 @@ export function NoMatch({ query, suggestions, onPick }: NoMatchProps) {
             {suggestions.map((item) => (
               <li key={item.title.id}>
                 <button type="button" onClick={() => onPick(item.title.id)}>
-                  <strong>{item.title.title}</strong>
+                  <strong>{displayTitle(item.title)}</strong>
                   <span>
                     {item.title.authors[0] ?? "Author not listed"}
+                    {presenceLabel(item)}
                     {item.title.batches.length ? ` · ${item.title.batches.join(", ")}` : ""}
                   </span>
                 </button>
@@ -34,4 +35,11 @@ export function NoMatch({ query, suggestions, onPick }: NoMatchProps) {
       ) : null}
     </section>
   );
+}
+
+function presenceLabel(item: ScoredTitle): string {
+  const presence = presenceOf(item.title);
+  if (presence === "both") return " · In collection + posted";
+  if (presence === "holdings") return " · In collection";
+  return " · Posted for review";
 }

@@ -18,14 +18,21 @@ export function StatsStrip({ data }: StatsStripProps) {
     .filter((level) => level !== "Milam Book Vending Machine")
     .map((level) => `${data.stats.titlesByLevel[level] ?? 0} ${level.toLowerCase()}`)
     .join(" · ");
+  const holdings = data.stats.holdingsUniqueIsbns ?? 0;
+  const linked = data.stats.inCollectionPostedCount ?? 0;
 
   return (
     <section className="stats-strip no-print" aria-label="Collection statistics">
       <Stat value={data.rowCount.toLocaleString()} label="Posted listings" />
-      <Stat value={data.uniqueTitleCount.toLocaleString()} label="Unique titles" />
-      <Stat value={String(data.batches.length)} label="Posted periods" />
+      <Stat value={data.uniqueTitleCount.toLocaleString()} label="Unique posted titles" />
+      <Stat value={holdings ? holdings.toLocaleString() : String(data.batches.length)} label={holdings ? "In collection (ISBNs)" : "Posted periods"} />
       <Stat value={String(data.levels.length)} label="Levels covered" />
-      <p className="stats-note">{levels}</p>
+      <p className="stats-note">
+        {levels}
+        {holdings
+          ? ` · ${linked.toLocaleString()} posted title${linked === 1 ? "" : "s"} also in the Follett collection · holdings search by ISBN or author`
+          : ""}
+      </p>
     </section>
   );
 }
