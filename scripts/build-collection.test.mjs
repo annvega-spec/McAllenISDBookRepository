@@ -11,6 +11,7 @@ import {
   FOLLETT_FORMAT,
   ingestFollettRows,
   isExcludedPostedTitle,
+  isSoraStaffOnly,
   loadPostedExclusions,
   rowFingerprint,
   titleKey,
@@ -747,5 +748,130 @@ describe("Sora export", () => {
     const solo = catalog.collection.titles.find((title) => title.title === "Sora Solo");
     expect(solo?.formats.audio).toBe(true);
     expect(solo?.posted).toBe(false);
+  });
+
+  it("treats Staff Only (case-insensitive, including mixed access-level lists) as staff-only", () => {
+    expect(isSoraStaffOnly("Staff Only")).toBe(true);
+    expect(isSoraStaffOnly("staff only")).toBe(true);
+    expect(isSoraStaffOnly("STAFF ONLY")).toBe(true);
+    expect(isSoraStaffOnly("High School, Staff Only")).toBe(true);
+    expect(isSoraStaffOnly("Staff Only; Elementary")).toBe(true);
+    expect(isSoraStaffOnly("Elementary")).toBe(false);
+    expect(isSoraStaffOnly("High School")).toBe(false);
+    expect(isSoraStaffOnly("Middle School")).toBe(false);
+  });
+
+  it("skips Staff Only Sora rows and still imports Elementary/High School Sora titles", () => {
+    const payload = buildCollection([
+      {
+        filePath: "Sora-titles.xlsx",
+        label: "Sora-titles.xlsx",
+        kind: "sora",
+        rows: [
+          {
+            TitleID: 1,
+            Title: "Dungeon Crawler Carl",
+            Creator: "Dinniman, Matt",
+            ISBN: "9798232923594",
+            Format: "Ebook",
+            "Content access levels": "Staff Only",
+          },
+          {
+            TitleID: 2,
+            Title: "STAFF ONLY AUDIO",
+            Creator: "Hidden, A",
+            ISBN: "9780001111111",
+            Format: "Audiobook",
+            "Content access levels": "staff only",
+          },
+          {
+            TitleID: 3,
+            Title: "Mixed Access Skip",
+            Creator: "Skip, Me",
+            ISBN: "9780002222222",
+            Format: "Ebook",
+            "Content access levels": "High School, Staff Only",
+          },
+          {
+            TitleID: 4,
+            Title: "1984",
+            Creator: "Orwell, George",
+            ISBN: "9780547249643",
+            Format: "Ebook",
+            "Content access levels": "High School",
+          },
+          {
+            TitleID: 5,
+            Title: "#Goldilocks: A Hashtag Cautionary Tale",
+            Creator: "Willis, Jeanne",
+            ISBN: "9781787611597",
+            Format: "Ebook",
+            "Content access levels": "Elementary",
+          },
+        ],
+      },
+    ]);
+    expect(payload.titles.find((title) => title.title === "Dungeon Crawler Carl")).toBeUndefined();
+    expect(payload.titles.find((title) => title.isbnDigits.includes("9798232923594"))).toBeUndefined();
+    expect(payload.titles.find((title) => title.isbnDigits.includes("9780001111111"))).toBeUndefined();
+    expect(payload.titles.find((title) => title.title === "Mixed Access Skip")).toBeUndefined();
+    const campusHigh = payload.titles.find((title) => title.title === "1984");
+    expect(campusHigh?.inCollection).toBe(true);
+    expect(campusHigh?.posted).toBe(false);
+    expect(campusHigh?.batches).toEqual(["Sora 2026-09-16"]);
+    expect(campusHigh?.levels).toEqual(["High"]);
+    expect(campusHigh?.isbnDigits).toContain("9780547249643");
+    const campusElem = payload.titles.find((title) => title.title.includes("Goldilocks"));
+    expect(campusElem?.inCollection).toBe(true);
+    expect(campusElem?.levels).toEqual(["Elementary"]);
+    expect(campusElem?.isbnDigits).toContain("9781787611597");
+  });
+
+  it("keeps a posted/Follett card and drops only the Staff Only Sora ISBN", () => {
+    const payload = buildCollection([
+      rows([
+        {
+          Title: "Circe",
+          Author: "Miller, Madeline",
+          ISBN: "9780316556330",
+          "Source Batch": "Sep 2025",
+          Level: "High",
+        },
+      ]),
+      {
+        filePath: "Sora-titles.xlsx",
+        label: "Sora-titles.xlsx",
+        kind: "sora",
+        rows: [
+          {
+            TitleID: 1,
+            Title: "Circe",
+            Creator: "Miller, Madeline",
+            ISBN: "9781478975311",
+            Format: "Audiobook",
+            "Content access levels": "Staff Only",
+          },
+          {
+            TitleID: 2,
+            Title: "Circe",
+            Creator: "Miller, Madeline",
+            ISBN: "9780547249999",
+            Format: "Ebook",
+            "Content access levels": "High School",
+          },
+        ],
+      },
+    ]);
+    expect(payload.uniqueTitleCount).toBe(1);
+    const title = payload.titles[0];
+    expect(title.title).toBe("Circe");
+    expect(title.posted).toBe(true);
+    expect(title.inCollection).toBe(true);
+    expect(title.isbnDigits).toContain("9780316556330");
+    expect(title.isbnDigits).toContain("9780547249999");
+    expect(title.isbnDigits).not.toContain("9781478975311");
+    expect(title.batches).toEqual(expect.arrayContaining(["Sep 2025", "Sora 2026-09-16"]));
+    expect(title.formats.ebook).toBe(true);
+    expect(title.formats.audio).toBe(false);
   });
 });

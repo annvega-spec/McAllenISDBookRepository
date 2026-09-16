@@ -5,7 +5,7 @@ Do not replace or delete the original file in the parent folder
 
 This folder currently also holds:
 - District-Report-9.16.26.xlsx (Follett Destiny holdings)
-- Sora-titles.xlsx (Sora Ebook/Audiobook collection)
+- Sora-titles.xlsx (Sora Ebook/Audiobook collection; Staff Only titles are skipped)
 - All-Campuses.xlsx (posted/approved campus list)
 - ebook-list-A.xlsx, ebook-list-B.xlsx, ebook-list-C.xlsx (eBook orders)
 

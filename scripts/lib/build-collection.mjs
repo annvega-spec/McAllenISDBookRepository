@@ -331,9 +331,21 @@ export function cleanSoraTitle(title) {
     .trim();
 }
 
+export function isSoraStaffOnly(level) {
+  const v = cell(level)
+    .toLowerCase()
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\s+/g, " ");
+  if (!v) return false;
+  if (v === "staff only" || v === "staff-only") return true;
+  const parts = v.split(/[,;/|]+/).map((part) => part.trim());
+  if (parts.some((part) => part === "staff only" || part === "staff-only")) return true;
+  return /\bstaff[\s-]+only\b/.test(v);
+}
+
 function soraLevel(level) {
   const v = cell(level);
-  if (!v || /staff/i.test(v)) return "";
+  if (!v || isSoraStaffOnly(v)) return "";
   return normalizeLevel(v);
 }
 
@@ -729,7 +741,11 @@ export function buildCollection(sources, { exclusions = [] } = {}) {
     const kind = source.kind || "master";
     sourceFiles.push(label);
     for (const raw of source.rows) {
-      const row = applySourceHints(canonicalizeRow(raw), kind);
+      const canonical = canonicalizeRow(raw);
+      if (kind === "sora" && isSoraStaffOnly(canonical.Level || canonical["Content access levels"])) {
+        continue;
+      }
+      const row = applySourceHints(canonical, kind);
       if (kind === "sora") {
         const fmt = cell(row.Format).toLowerCase();
         if (fmt !== "ebook" && fmt !== "audiobook") continue;

@@ -214,4 +214,37 @@ describe("Sora Ebook/Audiobook import", () => {
     expect(title?.formats.ebook).toBe(true);
     expect(title?.batches).toEqual(expect.arrayContaining(["Sora 2026-09-16"]));
   });
+
+  it("does not return HAVE IT from Sora Staff Only for Dungeon Crawler Carl", () => {
+    expect(data.titles.some((title) => title.isbnDigits.includes("9798232923594"))).toBe(false);
+    expect(
+      data.titles.some(
+        (title) =>
+          normalizeTitle(title.title) === "dungeon crawler carl" && title.batches.some((batch) => /^sora/i.test(batch)),
+      ),
+    ).toBe(false);
+
+    const isbnMatch = classifySearch(searchTitles(data, "9798232923594", { holdingsIndex })).match?.title;
+    expect(isbnMatch).toBeUndefined();
+
+    const classified = classifySearch(searchTitles(data, "Dungeon Crawler Carl", { holdingsIndex }));
+    const match = classified.match?.title;
+    if (match && normalizeTitle(match.title) === "dungeon crawler carl") {
+      expect(match.isbnDigits).not.toContain("9798232923594");
+      expect(match.batches.some((batch) => /^sora/i.test(batch))).toBe(false);
+    } else {
+      expect(classified.match).toBeNull();
+    }
+  });
+
+  it("still imports a normal Elementary Sora title", () => {
+    const results = searchTitles(data, "9781449466060", { holdingsIndex });
+    const title = classifySearch(results).match?.title;
+    expect(title?.title).toBe("¡Hola!");
+    expect(title?.inCollection).toBe(true);
+    expect(title?.posted).toBe(false);
+    expect(title?.batches).toEqual(expect.arrayContaining(["Sora 2026-09-16"]));
+    expect(title?.levels).toEqual(expect.arrayContaining(["Elementary"]));
+    expect(title?.isbnDigits).toContain("9781449466060");
+  });
 });
