@@ -65,7 +65,8 @@ function Desk({ data }: { data: CollectionData }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const debounced = useDebouncedValue(query, 120);
-  const searching = debounced.trim().length > 0;
+  const pending = query.trim() !== debounced.trim();
+  const searching = debounced.trim().length > 0 && !pending;
   const filteredBrowse = useMemo(
     () => (searching ? [] : filterTitles(data, batch, level)),
     [data, searching, batch, level],
@@ -98,13 +99,15 @@ function Desk({ data }: { data: CollectionData }) {
   const showSuggestionsOnly =
     searching && !classified.match && classified.list.length > 0 && classified.list[0].score < 0.62;
 
-  const searchHint = !query.trim()
-    ? "Punctuation and leading articles are ignored. Close matches appear if an exact title is not found."
-    : classified.match
-      ? "Posted for review — title found on the master list."
-      : showNoMatch
-        ? "No posted title matched this search."
-        : `${results.length} matching title${results.length === 1 ? "" : "s"}`;
+  const searchHint = pending
+    ? "Searching…"
+    : !query.trim()
+      ? "Punctuation and leading articles are ignored. Close matches appear if an exact title is not found."
+      : classified.match
+        ? "Posted for review — title found on the master list."
+        : showNoMatch
+          ? "No posted title matched this search."
+          : `${results.length} matching title${results.length === 1 ? "" : "s"}`;
 
   const verdict = (
     <>
@@ -156,13 +159,13 @@ function Desk({ data }: { data: CollectionData }) {
         <div id="search">
           <SearchBox value={query} onChange={setQuery} hint={searchHint} />
         </div>
-        {searching ? verdict : null}
-        {searching ? listPanel : null}
+        {searching && !pending ? verdict : null}
+        {searching && !pending ? listPanel : null}
         <StatsStrip data={data} />
         <FilterBar data={data} batch={batch} level={level} onBatch={setBatch} onLevel={setLevel} />
-        {!searching ? verdict : null}
+        {!searching && !pending ? verdict : null}
 
-        {!searching && !browseActive ? (
+        {!searching && !browseActive && !query.trim() ? (
           <section className="welcome no-print">
             <h2>How to use this desk</h2>
             <ol>
@@ -174,7 +177,7 @@ function Desk({ data }: { data: CollectionData }) {
           </section>
         ) : null}
 
-        {!searching ? listPanel : null}
+        {!searching && !pending ? listPanel : null}
       </main>
       <Footer />
     </div>
