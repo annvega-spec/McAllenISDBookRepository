@@ -18,7 +18,7 @@ That is a normal website. Bookmark it. No GitHub account is needed to search **i
 
 1. On GitHub, open the repository → **Settings** → **Pages**.
 2. Under **Build and deployment**, set **Source** to **GitHub Actions**.
-3. Merge to `main` (or re-run the “Build and deploy GitHub Pages” workflow). The live URL above should work after the workflow finishes (often a minute or two).
+3. Merge to `main` (or re-run the “Build and deploy GitHub Pages” workflow). The first successful deploy on `main` tries to turn Pages on. If the live URL still 404s, set **Source** to **GitHub Actions** as above and run the workflow again.
 
 If Pages is already set to GitHub Actions, you can skip this.
 
