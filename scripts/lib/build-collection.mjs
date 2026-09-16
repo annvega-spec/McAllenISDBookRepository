@@ -103,8 +103,21 @@ export function cell(value) {
   return String(value).trim();
 }
 
+const ARTICLES = new Set(["a", "an", "the"]);
+
+/** Must match src/lib/normalize.ts `normalizeTitle`: case, trim, punctuation, leading a/an/the. */
 export function titleKey(title) {
-  return cell(title).toLowerCase().replace(/\s+/g, " ");
+  const stripped = cell(title)
+    .toLowerCase()
+    .replace(/[&+]/g, " and ")
+    .replace(/[^a-z0-9\s]/gi, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+  const parts = stripped.split(" ").filter(Boolean);
+  while (parts.length > 1 && ARTICLES.has(parts[0])) {
+    parts.shift();
+  }
+  return parts.join(" ");
 }
 
 export function isbnDigits(value) {
@@ -392,8 +405,7 @@ function mergeGroupsBySharedIsbn(groups) {
   for (const group of merged.values()) {
     const display = pickDisplayTitle(group.titleCounts);
     const nextKey = titleKey(display) || group.key;
-    const namedKeys = [...group.titleKeys].filter((key) => key && !key.startsWith("isbn:"));
-    if (namedKeys.length > 1) group.possibleDuplicate = true;
+    if (group.titleCounts.size > 1) group.possibleDuplicate = true;
     if (!byTitle.has(nextKey)) {
       group.key = nextKey;
       byTitle.set(nextKey, group);
@@ -436,6 +448,7 @@ function finalizeGroups(groups, sourceFiles) {
         if (values.length) reviews[key] = values;
       }
       const title = pickDisplayTitle(g.titleCounts);
+      if (g.titleCounts.size > 1) g.possibleDuplicate = true;
       const id = createHash("sha1").update(g.key).digest("hex").slice(0, 12);
       const postedBatches = sortBatches([...g.postedBatches]);
       const holdingsBatches = sortBatches([...g.holdingsBatches]);

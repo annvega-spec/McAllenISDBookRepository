@@ -1,4 +1,5 @@
 import type { CollectionData, ScoredTitle, TitleRecord } from "../types";
+import { collapseScoredTitles, collapseTitleRecords, mergeTitleRecords, titleGroupKey } from "./group";
 import type { HoldingsIndex } from "./holdings";
 import { lookupHoldingIsbn, searchHoldingsTokens } from "./holdings";
 import { isbnQueryDigits, looksLikeIsbnQuery } from "./isbn";
@@ -112,11 +113,13 @@ export function searchTitles(
 ): ScoredTitle[] {
   const { limit = 50, minScore = 0.42, batch, level, holdingsIndex } = options;
   const trimmed = query.trim();
-  const pool = data.titles.filter((title) => {
-    if (batch && batch !== "all" && !title.batches.includes(batch)) return false;
-    if (level && level !== "all" && !title.levels.includes(level)) return false;
-    return true;
-  });
+  const pool = collapseTitleRecords(
+    data.titles.filter((title) => {
+      if (batch && batch !== "all" && !title.batches.includes(batch)) return false;
+      if (level && level !== "all" && !title.levels.includes(level)) return false;
+      return true;
+    }),
+  );
 
   if (!trimmed) {
     return pool.slice(0, limit).map((title) => ({ title, score: 0, reason: "title" }));
@@ -125,7 +128,7 @@ export function searchTitles(
   const isbnQuery = looksLikeIsbnQuery(trimmed) || looksLikeIsbn(trimmed);
   if (isbnQuery) {
     const digits = isbnQueryDigits(trimmed);
-    const postedHit = data.titles.find((title) =>
+    const postedHit = pool.find((title) =>
       title.isbnDigits.some((isbn) => isbn === digits || (digits.length >= 10 && (isbn.includes(digits) || digits.includes(isbn)))),
     );
     if (postedHit) {
@@ -133,7 +136,11 @@ export function searchTitles(
     }
     if (holdingsIndex && digits.length >= 10) {
       const holding = lookupHoldingIsbn(holdingsIndex, digits);
-      if (holding) return [{ title: holding, score: ISBN_MATCH, reason: "isbn" }];
+      if (holding) {
+        const titled = pool.find((title) => title.isbnDigits.includes(holding.isbnDigits[0]) || holding.isbnDigits.some((isbn) => title.isbnDigits.includes(isbn)));
+        if (titled) return [{ title: mergeTitleRecords(titled, holding), score: ISBN_MATCH, reason: "isbn" }];
+        return [{ title: holding, score: ISBN_MATCH, reason: "isbn" }];
+      }
     }
   }
 
@@ -148,16 +155,24 @@ export function searchTitles(
   const browseFiltered = Boolean(batch && batch !== "all") || Boolean(level && level !== "all");
   if (holdingsIndex && !isbnQuery && !browseFiltered && trimmed.length >= 3) {
     const holdingsHits = searchHoldingsTokens(holdingsIndex, trimmed, 12);
+    const seen = new Set(scored.map((item) => titleGroupKey(item.title)));
     for (const title of holdingsHits) {
-      if (scored.some((item) => item.title.isbnDigits.some((isbn) => title.isbnDigits.includes(isbn)))) continue;
+      const isbnHit = scored.find((item) => item.title.isbnDigits.some((isbn) => title.isbnDigits.includes(isbn)));
+      if (isbnHit) continue;
+      const groupKey = titleGroupKey(title);
+      if (seen.has(groupKey) && !groupKey.startsWith("isbn:")) continue;
       const { score, reason } = titleScore(trimmed, title);
       const floor = title.title ? Math.max(score, 0.55) : Math.max(score, 0.7);
-      if (floor >= minScore) scored.push({ title, score: Math.min(floor, 0.9), reason: reason === "title" ? "title" : "author" });
+      if (floor >= minScore) {
+        scored.push({ title, score: Math.min(floor, 0.9), reason: reason === "title" ? "title" : "author" });
+        seen.add(groupKey);
+      }
     }
   }
 
-  scored.sort((a, b) => b.score - a.score || (a.title.title || "").localeCompare(b.title.title || ""));
-  return scored.slice(0, limit);
+  const unique = collapseScoredTitles(scored);
+  unique.sort((a, b) => b.score - a.score || (a.title.title || "").localeCompare(b.title.title || ""));
+  return unique.slice(0, limit);
 }
 
 export function classifySearch(results: ScoredTitle[]): {
@@ -172,7 +187,7 @@ export function classifySearch(results: ScoredTitle[]): {
     top.score >= 0.92 && (!second || top.score - second.score >= 0.04 || top.reason === "isbn");
 
   const close = results
-    .filter((item) => item.title.id !== top.title.id && item.score >= 0.58)
+    .filter((item) => titleGroupKey(item.title) !== titleGroupKey(top.title) && item.score >= 0.58)
     .slice(0, 5);
 
   if (confident) {
@@ -187,9 +202,11 @@ export function filterTitles(
   batch: string,
   level: string,
 ): TitleRecord[] {
-  return data.titles.filter((title) => {
-    if (batch !== "all" && !title.batches.includes(batch)) return false;
-    if (level !== "all" && !title.levels.includes(level)) return false;
-    return true;
-  });
+  return collapseTitleRecords(
+    data.titles.filter((title) => {
+      if (batch !== "all" && !title.batches.includes(batch)) return false;
+      if (level !== "all" && !title.levels.includes(level)) return false;
+      return true;
+    }),
+  );
 }

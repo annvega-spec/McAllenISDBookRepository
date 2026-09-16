@@ -58,7 +58,7 @@ A push to `main` also builds and publishes the live GitHub Pages site, including
 - If nothing matches, the desk shows **DON'T HAVE IT**, plus **Did you mean…** when a close title exists.
 - Source-batch and level chips browse the posted lists. Follett holdings-only rows (no posted title) are found by search, not by paging through 200k cards.
 
-The same book may appear on more than one spreadsheet (different ISBNs or posting months). The desk groups those into one title, including untitled Follett holdings that share an ISBN with a posted title.
+The same book may appear on more than one spreadsheet (different ISBNs or posting months). The desk shows each unique title once: matching ignores capital letters, extra spaces, punctuation, and leading a/an/the, then lists every approved ISBN, author, posted date, and level on that one card. Untitled Follett holdings that share an ISBN with a posted title attach to that card instead of becoming a blank duplicate.
 
 ## Spreadsheet sources
 
@@ -87,7 +87,7 @@ When the district sends a **new** posted-title Excel file, add it. Do not throw 
    npm run import
    ```
 
-   This reads the original spreadsheet plus everything in `data/incoming`, matches books by title (ignoring capital letters and extra spaces) and ISBN, and combines all ISBNs and posted months for each title. Untitled Follett holdings merge onto a titled posted card when the ISBN matches. Running the same step again with the same files will not double the list.
+   This reads the original spreadsheet plus everything in `data/incoming`, matches books by title (ignoring capital letters, extra spaces, punctuation, and leading a/an/the) and ISBN, and combines all ISBNs and posted months for each title. Untitled Follett holdings merge onto a titled posted card when the ISBN matches. Running the same step again with the same files will not double the list. Stats count unique titles, not spreadsheet rows.
 3. **Refresh the desk.** If you are testing on your computer and the desk is already open, reload the browser page. After the change is on `main`, wait for GitHub Actions to finish — the live bookmark updates by itself.
 
 Leave the new Excel files in `data/incoming` after importing so the next update still includes them. Skip Excel lock files whose names start with `~$`.

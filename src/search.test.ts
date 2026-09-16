@@ -2,13 +2,15 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { collapseCollection } from "./lib/group";
 import { buildHoldingsIndex, type CompactHoldings } from "./lib/holdings";
 import { classifySearch, searchTitles } from "./lib/search";
 import { normalizeTitle } from "./lib/normalize";
 import type { CollectionData } from "./types";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const data = JSON.parse(readFileSync(join(root, "..", "public", "data", "collection.json"), "utf8")) as CollectionData;
+const raw = JSON.parse(readFileSync(join(root, "..", "public", "data", "collection.json"), "utf8")) as CollectionData;
+const data = collapseCollection(raw);
 const holdingsPath = join(root, "..", "public", "data", "holdings.json");
 const holdingsIndex = existsSync(holdingsPath)
   ? buildHoldingsIndex(JSON.parse(readFileSync(holdingsPath, "utf8")) as CompactHoldings)
@@ -23,6 +25,13 @@ describe("collection import", () => {
       expect.arrayContaining(["Sep 2025", "Oct 2025", "Nov 2025", "Jan 2026", "2026-2027", "All Campuses", "eBook order"]),
     );
   });
+
+  it("counts unique titles rather than spreadsheet rows", () => {
+    const keys = data.titles.map((title) => normalizeTitle(title.title)).filter(Boolean);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(data.uniqueTitleCount).toBeLessThan(data.rowCount);
+    expect(data.titles.filter((title) => normalizeTitle(title.title) === "101 dalmatians")).toHaveLength(1);
+  });
 });
 
 describe("title search", () => {
@@ -36,6 +45,8 @@ describe("title search", () => {
     expect(title.isbns).toContain("9780736481571");
     expect(title.batches).toEqual(expect.arrayContaining(["Sep 2025", "Oct 2025"]));
     expect(title.posted).not.toBe(false);
+    expect(results.filter((item) => normalizeTitle(item.title.title) === "101 dalmatians")).toHaveLength(1);
+    expect(classified.close.some((item) => normalizeTitle(item.title.title) === "101 dalmatians")).toBe(false);
   });
 
   it("matches ISBN lookups", () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildHoldingsIndex } from "./lib/holdings";
 import { parseIsbnCell } from "./lib/isbn";
+import { normalizeTitle } from "./lib/normalize";
 import { classifySearch, searchTitles } from "./lib/search";
 import type { CollectionData, TitleRecord } from "./types";
 
@@ -70,6 +71,84 @@ describe("ISBN scientific notation in search", () => {
     const results = searchTitles(data, "9.781516080236E12");
     expect(classifySearch(results).match?.title.title).toBe("A Dusty donkey detour");
     expect(classifySearch(results).match?.title.isbns).toContain("9781516080236");
+  });
+});
+
+describe("duplicate title collapse", () => {
+  const dupes: CollectionData = {
+    ...data,
+    rowCount: 4,
+    uniqueTitleCount: 4,
+    titles: [
+      title({
+        id: "dal-sep",
+        title: "101 Dalmatians",
+        authors: ["Bobowicz, Pamela"],
+        isbns: ["9780736481571"],
+        isbnDigits: ["9780736481571"],
+        batches: ["Sep 2025"],
+        postedBatches: ["Sep 2025"],
+        levels: ["Elementary"],
+      }),
+      title({
+        id: "dal-oct",
+        title: "The 101 Dalmatians!",
+        authors: ["Pamela Bobowicz"],
+        isbns: ["9780736481571"],
+        isbnDigits: ["9780736481571"],
+        batches: ["Oct 2025"],
+        postedBatches: ["Oct 2025"],
+        levels: ["Elementary"],
+      }),
+      title({
+        id: "dal-other",
+        title: "101 Dalmatians",
+        authors: ["Bobowicz, Pamela"],
+        isbns: ["9780736481999"],
+        isbnDigits: ["9780736481999"],
+        batches: ["Feb 2026"],
+        postedBatches: ["Feb 2026"],
+        levels: ["Elementary"],
+      }),
+      title({
+        id: "dal-blank",
+        title: "",
+        titleUnknown: true,
+        isbns: ["9780736481571"],
+        isbnDigits: ["9780736481571"],
+        batches: ["Follett 9.16.26"],
+        holdingsBatches: ["Follett 9.16.26"],
+        posted: false,
+        inCollection: true,
+      }),
+    ],
+  };
+
+  it("returns one card with every approved ISBN and posted date", () => {
+    const results = searchTitles(dupes, "101 Dalmatians");
+    expect(results).toHaveLength(1);
+    const match = classifySearch(results).match?.title;
+    expect(match).toBeTruthy();
+    expect(normalizeTitle(match!.title)).toBe("101 dalmatians");
+    expect(match!.isbns).toEqual(expect.arrayContaining(["9780736481571", "9780736481999"]));
+    expect(match!.postedBatches).toEqual(expect.arrayContaining(["Sep 2025", "Oct 2025", "Feb 2026"]));
+    expect(match!.authors.length).toBeGreaterThanOrEqual(1);
+    expect(match!.inCollection).toBe(true);
+    expect(match!.titleUnknown).toBeFalsy();
+  });
+
+  it("does not spawn a blank-title card when the ISBN already has a titled match", () => {
+    const results = searchTitles(dupes, "9780736481571");
+    expect(results).toHaveLength(1);
+    expect(results[0].title.title).toBe("101 Dalmatians");
+    expect(results[0].title.titleUnknown).toBeFalsy();
+    expect(results[0].title.isbns).toContain("9780736481571");
+  });
+
+  it("still says not found for a nonsense title", () => {
+    const results = searchTitles(dupes, "zxqwv purple giraffe cookbook");
+    expect(classifySearch(results).match).toBeNull();
+    expect(results).toHaveLength(0);
   });
 });
 
