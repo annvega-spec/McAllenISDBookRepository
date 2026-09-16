@@ -1,10 +1,10 @@
 # McAllen ISD Collection Check
 
-A desk tool for campus librarians to look up whether a title was posted for community review under Texas HB 900 and SB 13.
+A desk tool for campus librarians to look up whether **we HAVE IT**: a title posted for community review under Texas HB 900 and SB 13, a holding already in the Follett district collection, and/or a title on an eBook order list.
 
 Product name: **McAllen ISD Collection Check**.
 
-The app runs in a web browser with no separate server. The posted-title list is loaded from Excel files when someone runs the import (including automatically when this project is published), then saved as a file the desk can search even without the internet.
+The app runs in a web browser with no separate server. Spreadsheets are read when someone runs the import (including automatically when this project is published), then saved as files the desk can search even without the internet.
 
 ## Live desk (bookmark this)
 
@@ -52,31 +52,49 @@ A push to `main` also builds and publishes the live GitHub Pages site, including
 
 - Search by **title**, **author**, or **ISBN**.
 - Matching ignores case, punctuation, and leading articles (`a` / `an` / `the`).
-- Exact or near-exact titles open an **In collection / Posted for review** card with author(s), approved ISBNs, and posted period(s).
-- If nothing matches, the desk shows **Not in collection / Not found on the posted list**, plus **Did you mean…** when a close title exists.
-- Posted period and level chips browse the same list. Search stays the main action.
+- The result card answers **HAVE IT** or **Do not have it**, and can show more than one source on the same title:
+  - **Posted for community review** — original master list, All Campuses, and similar posted/approved lists
+  - **In collection / owned** — Follett district holdings (ISBN index; not an HB 900 posted batch)
+  - **eBook order list** — eBook order spreadsheets
+- The card lists all sources, all ISBNs, and all dates/batches when a title appears on more than one list.
+- Title search stays on the named lists (posted + eBook orders). ISBN search also checks the compact Follett holdings file, including rows that have no title.
+- If nothing matches, the desk shows **Do not have it**, plus **Did you mean…** when a close title exists.
 
-The same book may appear on more than one spreadsheet (different ISBNs or posting months). The desk groups those into one title.
+## Files already imported
+
+These five additional spreadsheets are already in `data/incoming` and are merged on every import (they do **not** replace `data/master-list.xlsx`):
+
+| File | Role |
+| --- | --- |
+| `District-Report-9.16.26.xlsx` | Follett district holdings. Book and eBook rows with an ISBN. Compact ISBN index. Tagged **Follett 9.16.26** (owned collection, not a posted batch). |
+| `All-Campuses.xlsx` | Posted/approved campus list. Searchable by title. Level from the first column. |
+| `ebook-list-A.xlsx` | eBook order list A. Edition kept as a format note. |
+| `ebook-list-B.xlsx` | eBook order list B. |
+| `ebook-list-C.xlsx` | eBook order list C. |
+
+Leave those files in `data/incoming`. Future files still drop in the same folder.
 
 ## Adding another spreadsheet
 
-When the district sends a **new** posted-title Excel file, add it. Do not throw away the original list.
+When the district sends a **new** Excel file, add it. Do not throw away the original list.
 
-1. **Drop the file** into the `data/incoming` folder. Leave `data/master-list.xlsx` where it is — that is the original list. New files are added on top; they do not replace it. You can put more than one file in `data/incoming`.
+1. **Drop the file** into the `data/incoming` folder. Leave `data/master-list.xlsx` where it is — that is the original posted list. New files are added on top; they do not replace it. You can put more than one file in `data/incoming`.
 2. **Run the import** from the project folder:
 
    ```bash
    npm run import
    ```
 
-   This reads the original spreadsheet plus everything in `data/incoming`, matches books by title (ignoring capital letters and extra spaces) and ISBN, and combines all ISBNs and posted months for each title. Running the same step again with the same files will not double the list.
+   This reads the original spreadsheet plus everything in `data/incoming`. Posted and eBook-order rows are matched by title and ISBN. Follett holdings are compacted into `public/data/owned.json` (ISBN-normalized; Video/Kit/other material types are skipped). Running the same step again with the same files will not double the list.
 3. **Refresh the desk.** If you are testing on your computer and the desk is already open, reload the browser page. After the change is on `main`, wait for GitHub Actions to finish — the live bookmark updates by itself.
 
 Leave the new Excel files in `data/incoming` after importing so the next update still includes them. Skip Excel lock files whose names start with `~$`.
 
-The spreadsheets should have a **Title** column. Other columns can match the original Master List, or close names such as Period / Posted, ISBN-13, or Authors. Useful columns:
+Posted/approved lists should have a **Title** column. Follett district reports can omit Title; Series Title is used as a display fallback, and ISBN/author still find the holding. Other columns can match the original Master List, or close names such as Period / Posted, ISBN-13, Authors, Elementary/Middle/High, QTY, or Edition. Useful columns:
 
-`Source Batch | Level | Title | Author | Book | eBook | Audio | ISBN | ISBN-10 | ISBN-13 | Normalized ISBN | ISBN-HB | ISBN-PB | ISBN-Other | Possible Duplicate | Audience | Booklist | Kirkus | PW | SLJ | Horn Book | Common Sense Media | Other Reviews`
+`Source Batch | Level | Title | Author | Book | eBook | Audio | ISBN | ISBN-10 | ISBN-13 | Normalized ISBN | ISBN-HB | ISBN-PB | ISBN-Other | Possible Duplicate | Audience | Booklist | Kirkus | PW | SLJ | Horn Book | Common Sense Media | Other Reviews | Edition | Material Type | Series Title`
+
+Scientific-notation ISBNs from Excel (for example `9.781516080236E12`) are converted to 13-digit strings. Follett ISBNs with hyphens, `(pbk.)` suffixes, and ISBN-10 values are normalized.
 
 If you are handing files to someone else: put them in `data/incoming` and ask that person to run the import (step 2) and refresh (step 3).
 
@@ -90,8 +108,8 @@ Only do this if you received a **full** new master workbook meant to stand in fo
 npm test
 ```
 
-Covers import counts, merge/idempotent extra spreadsheets, and the “101 Dalmatians” lookup.
+Covers import counts, merge/idempotent extra spreadsheets, scientific-notation ISBNs, Follett ISBN cleanup, merge of a titled row with an owned ISBN-only row, and the “101 Dalmatians” lookup.
 
 ## Stack
 
-Vite + React + TypeScript. No server, no database.
+Vite + React + TypeScript. No server, no database. Named lists ship as `public/data/collection.json`. Follett holdings ship as a compact ISBN index in `public/data/owned.json`.
