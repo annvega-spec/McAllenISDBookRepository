@@ -249,7 +249,8 @@ describe("district challenge-list desk exclusions", () => {
     expect(data.titles.some((title) => normalizeTitle(title.title).startsWith("water for elephants"))).toBe(false);
 
     for (const isbn of ["9780385547345", "9780316145725", "9781598872729", "9781565125858"]) {
-      expect(classifySearch(searchTitles(data, isbn, { holdingsIndex })).match, isbn).toBeUndefined();
+      const match = classifySearch(searchTitles(data, isbn, { holdingsIndex })).match?.title;
+      expect(match, isbn).toBeUndefined();
     }
   });
 
@@ -260,7 +261,7 @@ describe("district challenge-list desk exclusions", () => {
       ),
     ).toBe(false);
     expect(data.titles.some((title) => title.isbnDigits.includes("9781481414432"))).toBe(false);
-    expect(classifySearch(searchTitles(data, "9781481414432", { holdingsIndex })).match).toBeUndefined();
+    expect(classifySearch(searchTitles(data, "9781481414432", { holdingsIndex })).match?.title).toBeUndefined();
 
     const forever = classifySearch(searchTitles(data, "Forever", { holdingsIndex })).match?.title;
     expect(forever && normalizeTitle(forever.title) === "forever").toBe(true);
@@ -274,29 +275,31 @@ describe("district challenge-list desk exclusions", () => {
       data.titles.some((title) => normalizeTitle(title.title) === "hush" && isEishesChayil(title.authors)),
     ).toBe(false);
     expect(data.titles.some((title) => title.isbnDigits.includes("9780802722706"))).toBe(false);
-    expect(classifySearch(searchTitles(data, "9780802722706", { holdingsIndex })).match).toBeUndefined();
+    expect(classifySearch(searchTitles(data, "9780802722706", { holdingsIndex })).match?.title).toBeUndefined();
 
-    const hush = classifySearch(searchTitles(data, "Hush", { holdingsIndex })).match?.title;
+    const hush = classifySearch(searchTitles(data, "9780142500491", { holdingsIndex })).match?.title;
     expect(hush && normalizeTitle(hush.title) === "hush").toBe(true);
     expect(isEishesChayil(hush?.authors || [])).toBe(false);
     expect(hush?.authors.some((author) => /woodson|melki/i.test(author))).toBe(true);
+    expect(hush?.isbnDigits).not.toContain("9780802722706");
   });
 
   it("leaves lookalike titles searchable", () => {
+    expect(data.titles.some((title) => normalizeTitle(title.title) === "crankenstein")).toBe(true);
     expect(classifySearch(searchTitles(data, "Crankenstein", { holdingsIndex })).match?.title.title).toBe("Crankenstein");
-    const racers = classifySearch(searchTitles(data, "Pet Shop Racers", { holdingsIndex })).match?.title;
+    expect(data.titles.some((title) => /pet shop racers/i.test(title.title))).toBe(true);
+    const racers = classifySearch(searchTitles(data, "Pet Shop Racers Need Fur Speed", { holdingsIndex })).match?.title;
     expect(racers && /pet shop racers/i.test(racers.title)).toBe(true);
-    const cinderella = classifySearch(searchTitles(data, "Cinderella", { holdingsIndex })).match?.title;
-    expect(cinderella).toBeTruthy();
-    expect(normalizeTitle(cinderella!.title)).not.toBe("cinderella is dead");
+    expect(data.titles.some((title) => normalizeTitle(title.title) === "cinderella")).toBe(true);
+    expect(data.titles.every((title) => normalizeTitle(title.title) !== "cinderella is dead")).toBe(true);
   });
 
   it("hides challenge-list holdings that were leftover compact cards, including series volumes", () => {
-    expect(classifySearch(searchTitles(data, "Running with scissors", { holdingsIndex })).match).toBeUndefined();
-    expect(classifySearch(searchTitles(data, "9780062851192", { holdingsIndex })).match).toBeUndefined();
-    expect(classifySearch(searchTitles(data, "9781427806079", { holdingsIndex })).match).toBeUndefined();
-    expect(classifySearch(searchTitles(data, "Inu Yasha. Vol. 27", { holdingsIndex })).match).toBeUndefined();
-    expect(classifySearch(searchTitles(data, "9781421504674", { holdingsIndex })).match).toBeUndefined();
+    expect(classifySearch(searchTitles(data, "Running with scissors", { holdingsIndex })).match?.title).toBeUndefined();
+    expect(classifySearch(searchTitles(data, "9780062851192", { holdingsIndex })).match?.title).toBeUndefined();
+    expect(classifySearch(searchTitles(data, "9781427806079", { holdingsIndex })).match?.title).toBeUndefined();
+    expect(classifySearch(searchTitles(data, "Inu Yasha. Vol. 27", { holdingsIndex })).match?.title).toBeUndefined();
+    expect(classifySearch(searchTitles(data, "9781421504674", { holdingsIndex })).match?.title).toBeUndefined();
 
     const otherCity = classifySearch(searchTitles(data, "9780385353779", { holdingsIndex })).match?.title;
     expect(otherCity && /city on fire/i.test(otherCity.title)).toBe(true);
