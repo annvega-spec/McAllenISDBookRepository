@@ -476,6 +476,8 @@ describe("posted title exclusions", () => {
         expect.objectContaining({ title: "Forever", author: "Judy Blume", hideFromDesk: true, matchAuthor: true }),
         expect.objectContaining({ title: "Hush", author: "Eishes Chayil", hideFromDesk: true, matchAuthor: true }),
         expect.objectContaining({ title: "Lessons in Chemistry", author: "Bonnie Garmus", hideFromDesk: true }),
+        expect.objectContaining({ title: "Let's Talk About It", author: "Erika Moen", hideFromDesk: true, matchAuthor: true }),
+        expect.objectContaining({ title: "Let's Talk About It", author: "Matthew Nolan", hideFromDesk: true, matchAuthor: true }),
         expect.objectContaining({ title: "The Lovely Bones", author: "Alice Sebold", hideFromDesk: true }),
         expect.objectContaining({ title: "Water for Elephants", author: "Sara Gruen", hideFromDesk: true }),
         expect.objectContaining({ title: "Black Butler", author: "Yana Toboso", hideFromDesk: true, matchAuthor: true }),
@@ -660,6 +662,55 @@ describe("posted title exclusions", () => {
     expect(isHiddenFromDesk("Crankenstein", HOPKINS_EXCLUSIONS, "Samantha Berger")).toBe(false);
     expect(isHiddenFromDesk("Pet shop of horrors : Tokyo. Volume 1", PET_SHOP_DESK_EXCLUSIONS, "Akino, Matsuri.")).toBe(true);
     expect(isHiddenFromDesk("Pet shop racers. 1", PET_SHOP_DESK_EXCLUSIONS, "Jennings, C. S")).toBe(false);
+  });
+
+  const LETS_TALK_DESK_EXCLUSIONS = [
+    { title: "Let's Talk About It", author: "Erika Moen", hideFromDesk: true, matchAuthor: true, aliases: ["Lets Talk About It"] },
+    { title: "Let's Talk About It", author: "Matthew Nolan", hideFromDesk: true, matchAuthor: true, aliases: ["Lets Talk About It"] },
+  ];
+
+  it("hides Let's Talk About It by Erika Moen including subtitle variants, not unrelated series", () => {
+    expect(
+      isHiddenFromDesk(
+        "Let's talk about it : the teen's guide to sex, relationships, and being a human",
+        LETS_TALK_DESK_EXCLUSIONS,
+        "Moen, Erika, 1983-",
+      ),
+    ).toBe(true);
+    expect(isHiddenFromDesk("Let's Talk About It", LETS_TALK_DESK_EXCLUSIONS, "Erika Moen")).toBe(true);
+    expect(isHiddenFromDesk("Lets talk about it", LETS_TALK_DESK_EXCLUSIONS, "Moen, Erika")).toBe(true);
+    expect(isHiddenFromDesk("Let's Talk About It: A Graphic Novel", LETS_TALK_DESK_EXCLUSIONS, "Matthew Nolan")).toBe(true);
+    expect(isHiddenFromDesk("Online safety", LETS_TALK_DESK_EXCLUSIONS, "McAneney, Caitlin.")).toBe(false);
+    expect(isHiddenFromDesk("Do you have a secret?", LETS_TALK_DESK_EXCLUSIONS, "Moore-Mallinos, Jennifer.")).toBe(false);
+  });
+
+  it("drops Follett Let's Talk About It Moen holdings from leftover compact cards", () => {
+    const posted = buildCollection([
+      rows([{ Title: "Harbor Lights", Author: "Ng, C", ISBN: "9787777777777", "Source Batch": "Apr 2026" }]),
+    ]);
+    const ingested = ingestFollettRows(
+      [
+        {
+          Author: "Moen, Erika, 1983-",
+          ISBN: "978-1-984893-14-7",
+          "Material Type": "Book",
+          "Title/Subtitle": "Let's talk about it : the teen's guide to sex, relationships, and being a human",
+        },
+        {
+          Author: "McAneney, Caitlin.",
+          ISBN: "978-1-49940364-0",
+          "Material Type": "Book",
+          "Title/Subtitle": "Online safety",
+          "Series Title": "Let's talk about it.",
+        },
+      ],
+      { exclusions: LETS_TALK_DESK_EXCLUSIONS },
+    );
+    const compact = attachHoldingsToCollection(posted, ingested, { exclusions: LETS_TALK_DESK_EXCLUSIONS });
+    expect(ingested.byIsbn.has("9781984893147")).toBe(false);
+    expect(ingested.skippedHidden).toBe(1);
+    expect(compact.n).toBe(1);
+    expect(titleKey(compact.s[compact.r[0][2]])).toBe("online safety");
   });
 
   it("drops Blume Forever holdings from a merged Forever card and keeps Stiefvater", () => {

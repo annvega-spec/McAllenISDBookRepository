@@ -235,6 +235,22 @@
       "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
     },
     {
+      "title": "Let's Talk About It",
+      "author": "Erika Moen",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "aliases": ["Lets Talk About It"],
+      "note": "Community-review challenge (sex-ed graphic novel; also Matthew Nolan). Follett lists Moen. Prefix hides Let's Talk About It: subtitle variants. matchAuthor keeps unrelated Let's talk about it series (McAneney, Moore-Mallinos) whose work titles are different."
+    },
+    {
+      "title": "Let's Talk About It",
+      "author": "Matthew Nolan",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "aliases": ["Lets Talk About It"],
+      "note": "Same work as Erika Moen Let's Talk About It. Covers future Sora/Follett rows attributed to Nolan."
+    },
+    {
       "title": "Looking for Alaska",
       "author": "John Green",
       "hideFromDesk": true,

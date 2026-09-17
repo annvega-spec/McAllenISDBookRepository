@@ -305,6 +305,24 @@ describe("district challenge-list desk exclusions", () => {
     expect(otherCity && /city on fire/i.test(otherCity.title)).toBe(true);
     expect(otherCity?.authors.join(" ")).toMatch(/hallberg|minutaglio/i);
   });
+
+  it("does not return Let's Talk About It by Erika Moen as HAVE IT", () => {
+    expect(data.titles.some((title) => title.isbnDigits.includes("9781984893147"))).toBe(false);
+    expect(classifySearch(searchTitles(data, "9781984893147", { holdingsIndex })).match?.title).toBeUndefined();
+
+    const classified = classifySearch(searchTitles(data, "Let's Talk About It", { holdingsIndex }));
+    if (classified.match) {
+      const key = normalizeTitle(classified.match.title.title);
+      const authors = classified.match.title.authors.join(" ");
+      const isMoenGraphic =
+        (key === "let s talk about it" || key.startsWith("let s talk about it ") || key.startsWith("lets talk about it")) &&
+        /moen|nolan/i.test(authors);
+      expect(isMoenGraphic).toBe(false);
+    }
+
+    const online = classifySearch(searchTitles(data, "Online safety", { holdingsIndex })).match?.title;
+    expect(online && /online safety/i.test(online.title)).toBe(true);
+  });
 });
 
 describe("Follett Sound/Recording audiobooks", () => {

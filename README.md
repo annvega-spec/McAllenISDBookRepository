@@ -71,7 +71,7 @@ Optional exclusion fields:
 - `"matchAuthor": true` — hide only rows whose author matches. Use this when the same normalized title is more than one work (Judy Blume **Forever** vs Maggie Stiefvater **Forever**; Eishes Chayil **Hush** vs Jacqueline Woodson / Skye Melki-Wegner).
 - `"aliases"` — extra title strings that use the same hide rule (Inuyasha / Inu Yasha volumes; Black Butler also matches the PDF misspelling Black Butter).
 
-Posted-only exclusions: **Crank** and **Glass** by Ellen Hopkins. Hidden from the desk: **The Handmaid's Tale** by Margaret Atwood, plus the district challenge list in `data/exclusions.json` (Lessons in Chemistry, The Lovely Bones, Water for Elephants, Judy Blume Forever, Eishes Chayil Hush, and the rest of that PDF).
+Posted-only exclusions: **Crank** and **Glass** by Ellen Hopkins. Hidden from the desk: **The Handmaid's Tale** by Margaret Atwood, plus the district challenge list in `data/exclusions.json` (Lessons in Chemistry, The Lovely Bones, Water for Elephants, Judy Blume Forever, Eishes Chayil Hush, Let's Talk About It by Erika Moen, and the rest of that PDF).
 
 Current additional sources:
 
