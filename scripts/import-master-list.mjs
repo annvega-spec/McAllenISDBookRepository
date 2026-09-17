@@ -11,7 +11,9 @@
  * Titles listed in data/exclusions.json (normalized title + author) are skipped
  * so they cannot return to the approved / posted-for-review list. Entries with
  * hideFromDesk also drop Follett/Sora holdings cards (and same-title study
- * guides) so desk search returns no match. Follett Destiny holdings are written
+ * guides) so desk search returns no match. Optional matchAuthor limits that
+ * drop to rows whose author matches, and aliases cover series title variants.
+ * Follett Destiny holdings are written
  * to public/data/holdings.json as a compact title+ISBN index so the desk can
  * search ~200k items without shipping a verbose object per row. Titled district
  * reports group leftover rows onto one card per normalized title.

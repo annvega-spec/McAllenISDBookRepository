@@ -185,27 +185,47 @@ export function loadPostedExclusions(filePath) {
       title: cell(item.title),
       author: cell(item.author),
       hideFromDesk: Boolean(item.hideFromDesk),
+      matchAuthor: Boolean(item.matchAuthor),
+      aliases: Array.isArray(item.aliases) ? item.aliases.map((alias) => cell(alias)).filter(Boolean) : [],
     }))
     .filter((item) => item.title && item.author);
 }
 
-export function exclusionTitleMatches(title, exclusionTitle) {
+export function exclusionTitleMatches(title, exclusionTitle, aliases = []) {
   const key = titleKey(title);
-  const want = titleKey(exclusionTitle);
-  if (!key || !want) return false;
-  return key === want || key.startsWith(`${want} `);
+  if (!key) return false;
+  const candidates = [exclusionTitle, ...(aliases || [])];
+  return candidates.some((candidate) => {
+    const want = titleKey(candidate);
+    if (!want) return false;
+    return key === want || key.startsWith(`${want} `);
+  });
 }
 
 export function isExcludedPostedTitle(title, author, exclusions = []) {
   const key = titleKey(title);
   if (!key || !exclusions.length) return false;
-  return exclusions.some((item) => titleKey(item.title) === key && authorsMatch(author, item.author));
+  return exclusions.some((item) => {
+    const titles = [item.title, ...(item.aliases || [])];
+    return titles.some((candidate) => titleKey(candidate) === key) && authorsMatch(author, item.author);
+  });
 }
 
-/** Drop Follett/Sora (and posted) cards so they never appear on the desk. Matches the exclusion title, plus longer titles that start with it (study guides named after the work). */
-export function isHiddenFromDesk(title, exclusions = []) {
+/**
+ * Drop Follett/Sora (and posted) cards so they never appear on the desk.
+ * Matches the exclusion title (and aliases), plus longer titles that start with it
+ * (study guides named after the work). When matchAuthor is set, only rows whose
+ * author matches are hidden, so a shared title like Forever can keep a different
+ * author's card.
+ */
+export function isHiddenFromDesk(title, exclusions = [], author = "") {
   if (!title || !exclusions.length) return false;
-  return exclusions.some((item) => item.hideFromDesk && exclusionTitleMatches(title, item.title));
+  return exclusions.some((item) => {
+    if (!item.hideFromDesk) return false;
+    if (!exclusionTitleMatches(title, item.title, item.aliases)) return false;
+    if (item.matchAuthor) return authorsMatch(author, item.author);
+    return true;
+  });
 }
 
 export function isbnDigits(value) {
@@ -778,7 +798,7 @@ export function buildCollection(sources, { exclusions = [] } = {}) {
       const isbns = collectIsbns(row);
       if (!title && !isbns.size) continue;
       if (
-        isHiddenFromDesk(title, exclusions) ||
+        isHiddenFromDesk(title, exclusions, cell(row.Author)) ||
         (row._presence !== "holdings" && isExcludedPostedTitle(title, cell(row.Author), exclusions))
       ) {
         skippedExcludedRows += 1;
@@ -833,7 +853,11 @@ export function ingestFollettRows(rows, { batch = FOLLETT_BATCH, exclusions = []
       continue;
     }
     const title = follettDisplayTitle(row);
-    if (isHiddenFromDesk(title, exclusions) || (!title && isHiddenFromDesk(cell(row["Series Title"]), exclusions))) {
+    const author = cell(row.Author);
+    if (
+      isHiddenFromDesk(title, exclusions, author) ||
+      (!title && isHiddenFromDesk(cell(row["Series Title"]), exclusions, author))
+    ) {
       skippedHidden += 1;
       continue;
     }
@@ -1050,7 +1074,12 @@ export function attachHoldingsToCollection(payload, ingested, { exclusions = [] 
   const remaining = [];
   let linked = 0;
   for (const rec of ingested.byIsbn.values()) {
-    if (isHiddenFromDesk(rec.title, exclusions) || (!rec.title && isHiddenFromDesk(rec.series, exclusions))) continue;
+    if (
+      isHiddenFromDesk(rec.title, exclusions, rec.author) ||
+      (!rec.title && isHiddenFromDesk(rec.series, exclusions, rec.author))
+    ) {
+      continue;
+    }
     const hit = byDigits.get(rec.isbn13) || (rec.isbn10 ? byDigits.get(rec.isbn10) : null);
     if (!hit) {
       remaining.push(rec);
@@ -1066,7 +1095,12 @@ export function attachHoldingsToCollection(payload, ingested, { exclusions = [] 
   const titledByKey = indexTitledCards(payload.titles);
   const leftover = [];
   for (const rec of remaining) {
-    if (isHiddenFromDesk(rec.title, exclusions) || (!rec.title && isHiddenFromDesk(rec.series, exclusions))) continue;
+    if (
+      isHiddenFromDesk(rec.title, exclusions, rec.author) ||
+      (!rec.title && isHiddenFromDesk(rec.series, exclusions, rec.author))
+    ) {
+      continue;
+    }
     const hit = findTitledCardForHolding(rec, titledByKey);
     if (!hit) {
       leftover.push(rec);

@@ -15,6 +15,457 @@
       "author": "Margaret Atwood",
       "hideFromDesk": true,
       "note": "Removed from Collection Check entirely at librarian request. Import drops posted rows and Follett/Sora holdings cards (including same-title study guides) so desk search returns no match."
+    },
+    {
+      "title": "Ask the Passengers",
+      "author": "A.S. King",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Beat the Band",
+      "author": "Don Calame",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Black Butler",
+      "author": "Yana Toboso",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "aliases": ["Black Butter"],
+      "note": "District challenge list (PDF: Black Butter series). Series-wide hide for Yana Toboso. matchAuthor keeps unrelated titles such as The Black Butterfly."
+    },
+    {
+      "title": "Burned",
+      "author": "Ellen Hopkins",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list. Author-scoped hide so other books titled Burned stay searchable."
+    },
+    {
+      "title": "Chain of Iron",
+      "author": "Cassandra Clare",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Chosen",
+      "author": "P. C. Cast",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list (Chosen: a House of Night novel). Author-scoped hide so other Chosen titles (Dekker, Roth, White, etc.) stay searchable."
+    },
+    {
+      "title": "Cinderella Is Dead",
+      "author": "Kalynn Bayron",
+      "hideFromDesk": true,
+      "note": "District challenge list. Does not match Cinderella picture books."
+    },
+    {
+      "title": "Clap When You Land",
+      "author": "Elizabeth Acevedo",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Clockwork Angel",
+      "author": "Cassandra Clare",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Concrete Rose",
+      "author": "Angie Thomas",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Crown of Midnight",
+      "author": "Sarah J. Maas",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Darius the Great Deserves Better",
+      "author": "Adib Khorram",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Darius the Great Is Not Okay",
+      "author": "Adib Khorram",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Dead to You",
+      "author": "Lisa McMann",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Dreadnought",
+      "author": "April Daniels",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list. Author-scoped hide so unrelated Dreadnought titles stay searchable."
+    },
+    {
+      "title": "Eleanor & Park",
+      "author": "Rainbow Rowell",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Felix Ever After",
+      "author": "Kacen Callender",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Fight Club",
+      "author": "Chuck Palahniuk",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Forever",
+      "author": "Judy Blume",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list (Forever-- : a novel). Author-scoped hide peels Blume holdings off the merged Forever card and leaves Maggie Stiefvater's Forever searchable."
+    },
+    {
+      "title": "Friction",
+      "author": "E. R. Frank",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Girl Mans Up",
+      "author": "M-E Girard",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Go Ask Alice",
+      "author": "Anonymous",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list (PDF author: author anonymous)."
+    },
+    {
+      "title": "Gone, Gone, Gone",
+      "author": "Hannah Moskowitz",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Grasshopper Jungle",
+      "author": "Andrew Smith",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Heir of Fire",
+      "author": "Sarah J. Maas",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "History Is All You Left Me",
+      "author": "Adam Silvera",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Honestly Ben",
+      "author": "Bill Konigsberg",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "House of Earth and Blood",
+      "author": "Sarah J. Maas",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Hush",
+      "author": "Eishes Chayil",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list (HS and Middle). Author-scoped hide drops Chayil holdings and leaves Jacqueline Woodson / Skye Melki-Wegner Hush cards searchable."
+    },
+    {
+      "title": "If You Could Be Mine",
+      "author": "Sara Farizan",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Juliet Takes a Breath",
+      "author": "Gabby Rivera",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Kingdom of Ash",
+      "author": "Sarah J. Maas",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "The Kite Runner : graphic novel",
+      "author": "Khaled Hosseini",
+      "hideFromDesk": true,
+      "note": "District challenge list (graphic novel copy). Does not hide the prose novel The Kite Runner."
+    },
+    {
+      "title": "Lady Midnight",
+      "author": "Cassandra Clare",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Lessons in Chemistry",
+      "author": "Bonnie Garmus",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Looking for Alaska",
+      "author": "John Green",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list. Author-scoped hide so Peter Jenkins's Looking for Alaska stays searchable."
+    },
+    {
+      "title": "Lolita",
+      "author": "Vladimir Nabokov",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list. Author-scoped hide."
+    },
+    {
+      "title": "Lord of Shadows",
+      "author": "Cassandra Clare",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "The Lovely Bones",
+      "author": "Alice Sebold",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Money Boy",
+      "author": "Paul Yee",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "More Happy Than Not",
+      "author": "Adam Silvera",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "My Book of Life by Angel",
+      "author": "Martine Leavitt",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "My Heartbeat",
+      "author": "Garret Freymann-Weyr",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Native Son",
+      "author": "Richard Wright",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list. Author-scoped hide."
+    },
+    {
+      "title": "One Last Stop",
+      "author": "Casey McQuiston",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Oryx and Crake",
+      "author": "Margaret Atwood",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Out of the Easy",
+      "author": "Ruta Sepetys",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Pet",
+      "author": "Akwaeke Emezi",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list. Author-scoped hide so Pet Shop Racers and other Pet titles stay searchable."
+    },
+    {
+      "title": "Putting Makeup on the Fat Boy",
+      "author": "Bil Wright",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Queen of Air and Darkness",
+      "author": "Cassandra Clare",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Queen of Shadows",
+      "author": "Sarah J. Maas",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Ready or Not",
+      "author": "Meg Cabot",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list (Ready or Not: An All American Girl novel). Author-scoped hide."
+    },
+    {
+      "title": "Red Hood",
+      "author": "Elana K. Arnold",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list. Author-scoped hide so unrelated Red Hood titles stay searchable."
+    },
+    {
+      "title": "Running with Scissors",
+      "author": "Augusten Burroughs",
+      "hideFromDesk": true,
+      "note": "District challenge list (PDF author missing; Augusten Burroughs). Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Sold",
+      "author": "Patricia McCormick",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list. Author-scoped hide so Sold! and other Sold titles stay searchable."
+    },
+    {
+      "title": "Symptoms of Being Human",
+      "author": "Jeff Garvin",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Thirteen Reasons Why",
+      "author": "Jay Asher",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Tower of Dawn",
+      "author": "Sarah J. Maas",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Traffick",
+      "author": "Ellen Hopkins",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list. Author-scoped hide."
+    },
+    {
+      "title": "Tricks",
+      "author": "Ellen Hopkins",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list. Author-scoped hide."
+    },
+    {
+      "title": "Vampire Academy",
+      "author": "Richelle Mead",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Water for Elephants",
+      "author": "Sara Gruen",
+      "hideFromDesk": true,
+      "note": "District challenge list. Prefix also hides Water for Elephants: A Novel."
+    },
+    {
+      "title": "With or Without You",
+      "author": "Brian Farrey",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list. Author-scoped hide so other With or Without You titles stay searchable."
+    },
+    {
+      "title": "City on Fire",
+      "author": "Don Winslow",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list (PDF: HSs City on Fire). Author-scoped hide so Garth Risk Hallberg / Bill Minutaglio City on Fire and Paula Yoo's subtitle stay searchable."
+    },
+    {
+      "title": "The Summer of Owen Todd",
+      "author": "Tony Abbott",
+      "hideFromDesk": true,
+      "note": "District challenge list (PDF: Abbot, Tony). Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Pet Shop of Horrors",
+      "author": "Matsuri Akino",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "aliases": ["Pet Shop of Horrors Tokyo", "Pet shop of horrors : Tokyo"],
+      "note": "District challenge list (Tokyo volumes). Series-wide hide for Matsuri Akino. Does not match Pet Shop Racers."
+    },
+    {
+      "title": "Graduation Day",
+      "author": "Joelle Charbonneau",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list. Author-scoped hide so other Graduation Day titles stay searchable."
+    },
+    {
+      "title": "Period 8",
+      "author": "Chris Crutcher",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Maybe He Just Likes You",
+      "author": "Barbara Dee",
+      "hideFromDesk": true,
+      "note": "District challenge list. Hidden from the Collection Check desk so later imports cannot restore it."
+    },
+    {
+      "title": "Darkness Before Dawn",
+      "author": "Sharon Draper",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "note": "District challenge list. Author-scoped hide."
+    },
+    {
+      "title": "Inuyasha",
+      "author": "Rumiko Takahashi",
+      "hideFromDesk": true,
+      "matchAuthor": true,
+      "aliases": ["Inu Yasha", "Inu-Yasha", "InuYasha"],
+      "note": "District challenge list. Series-wide hide for Rumiko Takahashi Inuyasha / Inu Yasha volumes."
     }
   ]
 }
