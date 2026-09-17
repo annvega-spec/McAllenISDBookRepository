@@ -217,6 +217,114 @@ describe("Margaret Atwood desk exclusions", () => {
   });
 });
 
+function isJudyBlume(authors: string[]): boolean {
+  const tokens = new Set(normalizeLoose(authors.join(" ")).split(" ").filter(Boolean));
+  return tokens.has("judy") && tokens.has("blume");
+}
+
+function isEishesChayil(authors: string[]): boolean {
+  const tokens = new Set(normalizeLoose(authors.join(" ")).split(" ").filter(Boolean));
+  return tokens.has("eishes") && tokens.has("chayil");
+}
+
+describe("district challenge-list desk exclusions", () => {
+  it("does not return Lessons in Chemistry, The Lovely Bones, or Water for Elephants as HAVE IT", () => {
+    for (const query of [
+      "Lessons in Chemistry",
+      "The Lovely Bones",
+      "Water for Elephants",
+      "Water for Elephants: A Novel",
+    ]) {
+      const classified = classifySearch(searchTitles(data, query, { holdingsIndex }));
+      if (classified.match) {
+        const key = normalizeTitle(classified.match.title.title);
+        expect(key === "lessons in chemistry" || key.startsWith("lessons in chemistry "), query).toBe(false);
+        expect(key === "lovely bones" || key.startsWith("lovely bones "), query).toBe(false);
+        expect(key === "water for elephants" || key.startsWith("water for elephants "), query).toBe(false);
+      }
+    }
+
+    expect(data.titles.some((title) => normalizeTitle(title.title).startsWith("lessons in chemistry"))).toBe(false);
+    expect(data.titles.some((title) => normalizeTitle(title.title).startsWith("lovely bones"))).toBe(false);
+    expect(data.titles.some((title) => normalizeTitle(title.title).startsWith("water for elephants"))).toBe(false);
+
+    for (const isbn of ["9780385547345", "9780316145725", "9781598872729", "9781565125858"]) {
+      const match = classifySearch(searchTitles(data, isbn, { holdingsIndex })).match?.title;
+      expect(match, isbn).toBeUndefined();
+    }
+  });
+
+  it("peels Judy Blume Forever off the desk without hiding Maggie Stiefvater Forever", () => {
+    expect(
+      data.titles.some(
+        (title) => normalizeTitle(title.title) === "forever" && isJudyBlume(title.authors),
+      ),
+    ).toBe(false);
+    expect(data.titles.some((title) => title.isbnDigits.includes("9781481414432"))).toBe(false);
+    expect(classifySearch(searchTitles(data, "9781481414432", { holdingsIndex })).match?.title).toBeUndefined();
+
+    const forever = classifySearch(searchTitles(data, "Forever", { holdingsIndex })).match?.title;
+    expect(forever && normalizeTitle(forever.title) === "forever").toBe(true);
+    expect(forever?.authors.some((author) => /stiefvater/i.test(author))).toBe(true);
+    expect(isJudyBlume(forever?.authors || [])).toBe(false);
+    expect(forever?.isbnDigits).not.toContain("9781481414432");
+  });
+
+  it("peels Eishes Chayil Hush off the desk and leaves a non-Chayil Hush card", () => {
+    expect(
+      data.titles.some((title) => normalizeTitle(title.title) === "hush" && isEishesChayil(title.authors)),
+    ).toBe(false);
+    expect(data.titles.some((title) => title.isbnDigits.includes("9780802722706"))).toBe(false);
+    expect(classifySearch(searchTitles(data, "9780802722706", { holdingsIndex })).match?.title).toBeUndefined();
+
+    const hush = classifySearch(searchTitles(data, "9780142500491", { holdingsIndex })).match?.title;
+    expect(hush && normalizeTitle(hush.title) === "hush").toBe(true);
+    expect(isEishesChayil(hush?.authors || [])).toBe(false);
+    expect(hush?.authors.some((author) => /woodson|melki/i.test(author))).toBe(true);
+    expect(hush?.isbnDigits).not.toContain("9780802722706");
+  });
+
+  it("leaves lookalike titles searchable", () => {
+    expect(data.titles.some((title) => normalizeTitle(title.title) === "crankenstein")).toBe(true);
+    expect(classifySearch(searchTitles(data, "Crankenstein", { holdingsIndex })).match?.title.title).toBe("Crankenstein");
+    expect(data.titles.some((title) => /pet shop racers/i.test(title.title))).toBe(true);
+    const racers = classifySearch(searchTitles(data, "Pet Shop Racers Need Fur Speed", { holdingsIndex })).match?.title;
+    expect(racers && /pet shop racers/i.test(racers.title)).toBe(true);
+    expect(data.titles.some((title) => normalizeTitle(title.title) === "cinderella")).toBe(true);
+    expect(data.titles.every((title) => normalizeTitle(title.title) !== "cinderella is dead")).toBe(true);
+  });
+
+  it("hides challenge-list holdings that were leftover compact cards, including series volumes", () => {
+    expect(classifySearch(searchTitles(data, "Running with scissors", { holdingsIndex })).match?.title).toBeUndefined();
+    expect(classifySearch(searchTitles(data, "9780062851192", { holdingsIndex })).match?.title).toBeUndefined();
+    expect(classifySearch(searchTitles(data, "9781427806079", { holdingsIndex })).match?.title).toBeUndefined();
+    expect(classifySearch(searchTitles(data, "Inu Yasha. Vol. 27", { holdingsIndex })).match?.title).toBeUndefined();
+    expect(classifySearch(searchTitles(data, "9781421504674", { holdingsIndex })).match?.title).toBeUndefined();
+
+    const otherCity = classifySearch(searchTitles(data, "9780385353779", { holdingsIndex })).match?.title;
+    expect(otherCity && /city on fire/i.test(otherCity.title)).toBe(true);
+    expect(otherCity?.authors.join(" ")).toMatch(/hallberg|minutaglio/i);
+  });
+
+  it("does not return Let's Talk About It by Erika Moen as HAVE IT", () => {
+    expect(data.titles.some((title) => title.isbnDigits.includes("9781984893147"))).toBe(false);
+    expect(classifySearch(searchTitles(data, "9781984893147", { holdingsIndex })).match?.title).toBeUndefined();
+
+    const classified = classifySearch(searchTitles(data, "Let's Talk About It", { holdingsIndex }));
+    if (classified.match) {
+      const key = normalizeTitle(classified.match.title.title);
+      const authors = classified.match.title.authors.join(" ");
+      const isMoenGraphic =
+        (key === "let s talk about it" || key.startsWith("let s talk about it ") || key.startsWith("lets talk about it")) &&
+        /moen|nolan/i.test(authors);
+      expect(isMoenGraphic).toBe(false);
+    }
+
+    const online = classifySearch(searchTitles(data, "Online safety", { holdingsIndex })).match?.title;
+    expect(online && /online safety/i.test(online.title)).toBe(true);
+  });
+});
+
 describe("Follett Sound/Recording audiobooks", () => {
   it("attaches an audiobook ISBN onto the existing titled Last Kids on Earth card", () => {
     const results = searchTitles(data, "The Last Kids on Earth", { holdingsIndex });

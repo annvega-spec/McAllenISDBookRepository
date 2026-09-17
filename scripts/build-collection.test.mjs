@@ -466,16 +466,31 @@ describe("posted title exclusions", () => {
     expect(posted.stats.holdingsLinkedToPosted).toBe(0);
   });
 
-  it("loads the checked-in exclusions file for Crank, Glass, and The Handmaid's Tale", () => {
+  it("loads the checked-in exclusions file for Crank, Glass, The Handmaid's Tale, and the challenge list", () => {
     const loaded = loadPostedExclusions(join(process.cwd(), "data", "exclusions.json"));
     expect(loaded).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ title: "Crank", author: "Ellen Hopkins", hideFromDesk: false }),
-        expect.objectContaining({ title: "Glass", author: "Ellen Hopkins", hideFromDesk: false }),
-        expect.objectContaining({ title: "The Handmaid's Tale", author: "Margaret Atwood", hideFromDesk: true }),
+        expect.objectContaining({ title: "Crank", author: "Ellen Hopkins", hideFromDesk: false, matchAuthor: false }),
+        expect.objectContaining({ title: "Glass", author: "Ellen Hopkins", hideFromDesk: false, matchAuthor: false }),
+        expect.objectContaining({ title: "The Handmaid's Tale", author: "Margaret Atwood", hideFromDesk: true, matchAuthor: false }),
+        expect.objectContaining({ title: "Forever", author: "Judy Blume", hideFromDesk: true, matchAuthor: true }),
+        expect.objectContaining({ title: "Hush", author: "Eishes Chayil", hideFromDesk: true, matchAuthor: true }),
+        expect.objectContaining({ title: "Lessons in Chemistry", author: "Bonnie Garmus", hideFromDesk: true }),
+        expect.objectContaining({ title: "Let's Talk About It", author: "Erika Moen", hideFromDesk: true, matchAuthor: true }),
+        expect.objectContaining({ title: "Let's Talk About It", author: "Matthew Nolan", hideFromDesk: true, matchAuthor: true }),
+        expect.objectContaining({ title: "The Lovely Bones", author: "Alice Sebold", hideFromDesk: true }),
+        expect.objectContaining({ title: "Water for Elephants", author: "Sara Gruen", hideFromDesk: true }),
+        expect.objectContaining({ title: "Black Butler", author: "Yana Toboso", hideFromDesk: true, matchAuthor: true }),
+        expect.objectContaining({ title: "Inuyasha", author: "Rumiko Takahashi", hideFromDesk: true, matchAuthor: true }),
+        expect.objectContaining({ title: "Pet Shop of Horrors", author: "Matsuri Akino", hideFromDesk: true, matchAuthor: true }),
+        expect.objectContaining({ title: "Running with Scissors", author: "Augusten Burroughs", hideFromDesk: true }),
+        expect.objectContaining({ title: "City on Fire", author: "Don Winslow", hideFromDesk: true, matchAuthor: true }),
       ]),
     );
-    expect(loaded).toHaveLength(3);
+    expect(loaded.length).toBeGreaterThan(60);
+    expect(loaded.filter((item) => item.title === "Crank" || item.title === "Glass").every((item) => !item.hideFromDesk)).toBe(
+      true,
+    );
   });
 
   it("honors exclusions when reading a real posted spreadsheet", () => {
@@ -591,6 +606,205 @@ describe("posted title exclusions", () => {
     expect(isHiddenFromDesk("Glory O'Brien's history of the future", HANDMAID_DESK_EXCLUSIONS)).toBe(false);
     expect(isHiddenFromDesk("The Handmaid's Tale", HANDMAID_EXCLUSIONS)).toBe(false);
     expect(isHiddenFromDesk("Crank", HOPKINS_EXCLUSIONS)).toBe(false);
+  });
+
+  const FOREVER_DESK_EXCLUSIONS = [{ title: "Forever", author: "Judy Blume", hideFromDesk: true, matchAuthor: true }];
+  const HUSH_DESK_EXCLUSIONS = [{ title: "Hush", author: "Eishes Chayil", hideFromDesk: true, matchAuthor: true }];
+  const INUYASHA_DESK_EXCLUSIONS = [
+    {
+      title: "Inuyasha",
+      author: "Rumiko Takahashi",
+      hideFromDesk: true,
+      matchAuthor: true,
+      aliases: ["Inu Yasha", "Inu-Yasha", "InuYasha"],
+    },
+  ];
+  const PET_SHOP_DESK_EXCLUSIONS = [
+    {
+      title: "Pet Shop of Horrors",
+      author: "Matsuri Akino",
+      hideFromDesk: true,
+      matchAuthor: true,
+      aliases: ["Pet Shop of Horrors Tokyo"],
+    },
+  ];
+
+  it("matchAuthor hideFromDesk peels Judy Blume Forever without hiding Maggie Stiefvater", () => {
+    expect(isHiddenFromDesk("Forever", FOREVER_DESK_EXCLUSIONS, "Blume, Judy.")).toBe(true);
+    expect(isHiddenFromDesk("Forever-- : a novel", FOREVER_DESK_EXCLUSIONS, "Judy Blume")).toBe(true);
+    expect(isHiddenFromDesk("Forever", FOREVER_DESK_EXCLUSIONS, "Stiefvater, Maggie, 1981-")).toBe(false);
+    expect(isHiddenFromDesk("Forever in Blue", FOREVER_DESK_EXCLUSIONS, "Brashares, Ann")).toBe(false);
+  });
+
+  it("matchAuthor hideFromDesk peels Eishes Chayil Hush without hiding Woodson or Melki-Wegner", () => {
+    expect(isHiddenFromDesk("Hush", HUSH_DESK_EXCLUSIONS, "Chayil, Eishes.")).toBe(true);
+    expect(isHiddenFromDesk("Hush", HUSH_DESK_EXCLUSIONS, "Woodson, Jacqueline.")).toBe(false);
+    expect(isHiddenFromDesk("The Hush", HUSH_DESK_EXCLUSIONS, "Melki-Wegner, Skye,")).toBe(false);
+    expect(isHiddenFromDesk("Hush, hush", HUSH_DESK_EXCLUSIONS, "Fitzpatrick, Becca")).toBe(false);
+  });
+
+  it("series aliases hide Inuyasha / Inu Yasha volumes by Rumiko Takahashi only", () => {
+    expect(isHiddenFromDesk("Inuyasha. 1", INUYASHA_DESK_EXCLUSIONS, "Takahashi, Rumiko")).toBe(true);
+    expect(isHiddenFromDesk("Inu Yasha. 10", INUYASHA_DESK_EXCLUSIONS, "Takahashi, Rumiko, 1957-")).toBe(true);
+    expect(isHiddenFromDesk("Inu-Yasha : turning back time / Vol. 1.", INUYASHA_DESK_EXCLUSIONS, "Takahashi, Rumiko, 1957-")).toBe(
+      true,
+    );
+    expect(isHiddenFromDesk("InuYasha. Volume 12", INUYASHA_DESK_EXCLUSIONS, "Takahashi, Rumiko")).toBe(true);
+  });
+
+  it("does not hide Pet Shop Racers or Cinderella picture books or Crankenstein", () => {
+    const pet = [{ title: "Pet", author: "Akwaeke Emezi", hideFromDesk: true, matchAuthor: true }];
+    const cinderella = [{ title: "Cinderella Is Dead", author: "Kalynn Bayron", hideFromDesk: true }];
+    expect(isHiddenFromDesk("Pet Shop Racers Need Fur Speed", pet, "Jennings, C. S")).toBe(false);
+    expect(isHiddenFromDesk("Pet", pet, "Emezi, Akwaeke,")).toBe(true);
+    expect(isHiddenFromDesk("Cinderella", cinderella, "Perrault, Charles")).toBe(false);
+    expect(isHiddenFromDesk("Cinderella is dead", cinderella, "Bayron, Kalynn.")).toBe(true);
+    expect(isHiddenFromDesk("Crankenstein", HOPKINS_EXCLUSIONS, "Samantha Berger")).toBe(false);
+    expect(isHiddenFromDesk("Pet shop of horrors : Tokyo. Volume 1", PET_SHOP_DESK_EXCLUSIONS, "Akino, Matsuri.")).toBe(true);
+    expect(isHiddenFromDesk("Pet shop racers. 1", PET_SHOP_DESK_EXCLUSIONS, "Jennings, C. S")).toBe(false);
+  });
+
+  const LETS_TALK_DESK_EXCLUSIONS = [
+    { title: "Let's Talk About It", author: "Erika Moen", hideFromDesk: true, matchAuthor: true, aliases: ["Lets Talk About It"] },
+    { title: "Let's Talk About It", author: "Matthew Nolan", hideFromDesk: true, matchAuthor: true, aliases: ["Lets Talk About It"] },
+  ];
+
+  it("hides Let's Talk About It by Erika Moen including subtitle variants, not unrelated series", () => {
+    expect(
+      isHiddenFromDesk(
+        "Let's talk about it : the teen's guide to sex, relationships, and being a human",
+        LETS_TALK_DESK_EXCLUSIONS,
+        "Moen, Erika, 1983-",
+      ),
+    ).toBe(true);
+    expect(isHiddenFromDesk("Let's Talk About It", LETS_TALK_DESK_EXCLUSIONS, "Erika Moen")).toBe(true);
+    expect(isHiddenFromDesk("Lets talk about it", LETS_TALK_DESK_EXCLUSIONS, "Moen, Erika")).toBe(true);
+    expect(isHiddenFromDesk("Let's Talk About It: A Graphic Novel", LETS_TALK_DESK_EXCLUSIONS, "Matthew Nolan")).toBe(true);
+    expect(isHiddenFromDesk("Online safety", LETS_TALK_DESK_EXCLUSIONS, "McAneney, Caitlin.")).toBe(false);
+    expect(isHiddenFromDesk("Do you have a secret?", LETS_TALK_DESK_EXCLUSIONS, "Moore-Mallinos, Jennifer.")).toBe(false);
+  });
+
+  it("drops Follett Let's Talk About It Moen holdings from leftover compact cards", () => {
+    const posted = buildCollection([
+      rows([{ Title: "Harbor Lights", Author: "Ng, C", ISBN: "9787777777777", "Source Batch": "Apr 2026" }]),
+    ]);
+    const ingested = ingestFollettRows(
+      [
+        {
+          Author: "Moen, Erika, 1983-",
+          ISBN: "978-1-984893-14-7",
+          "Material Type": "Book",
+          "Title/Subtitle": "Let's talk about it : the teen's guide to sex, relationships, and being a human",
+        },
+        {
+          Author: "McAneney, Caitlin.",
+          ISBN: "978-1-49940364-0",
+          "Material Type": "Book",
+          "Title/Subtitle": "Online safety",
+          "Series Title": "Let's talk about it.",
+        },
+      ],
+      { exclusions: LETS_TALK_DESK_EXCLUSIONS },
+    );
+    const compact = attachHoldingsToCollection(posted, ingested, { exclusions: LETS_TALK_DESK_EXCLUSIONS });
+    expect(ingested.byIsbn.has("9781984893147")).toBe(false);
+    expect(ingested.skippedHidden).toBe(1);
+    expect(compact.n).toBe(1);
+    expect(titleKey(compact.s[compact.r[0][2]])).toBe("online safety");
+  });
+
+  it("drops Blume Forever holdings from a merged Forever card and keeps Stiefvater", () => {
+    const payload = buildCollection(
+      [
+        {
+          filePath: "Sora-titles.xlsx",
+          label: "Sora-titles.xlsx",
+          kind: "sora",
+          rows: [
+            {
+              TitleID: 1,
+              Title: "Forever",
+              Creator: "Stiefvater, Maggie",
+              ISBN: "9781338247206",
+              Format: "Audiobook",
+              "Content access levels": "Middle School",
+            },
+            {
+              TitleID: 2,
+              Title: "Forever",
+              Creator: "Blume, Judy",
+              ISBN: "9781481414432",
+              Format: "Ebook",
+              "Content access levels": "High School",
+            },
+          ],
+        },
+      ],
+      { exclusions: FOREVER_DESK_EXCLUSIONS },
+    );
+    const ingested = ingestFollettRows(
+      [
+        {
+          Author: "Blume, Judy.",
+          ISBN: "978-1-48141443-2",
+          "Material Type": "Book",
+          "Title/Subtitle": "Forever--",
+        },
+        {
+          Author: "Stiefvater, Maggie, 1981-",
+          ISBN: "978-0-545-25908-8",
+          "Material Type": "Book",
+          "Title/Subtitle": "Forever",
+        },
+      ],
+      { exclusions: FOREVER_DESK_EXCLUSIONS },
+    );
+    attachHoldingsToCollection(payload, ingested, { exclusions: FOREVER_DESK_EXCLUSIONS });
+    const forever = payload.titles.find((title) => titleKey(title.title) === "forever");
+    expect(forever).toBeTruthy();
+    expect(forever.authors.some((author) => /stiefvater/i.test(author))).toBe(true);
+    expect(forever.authors.some((author) => /blume/i.test(author))).toBe(false);
+    expect(forever.isbnDigits).toContain("9781338247206");
+    expect(forever.isbnDigits).toContain("9780545259088");
+    expect(forever.isbnDigits).not.toContain("9781481414432");
+    expect(ingested.byIsbn.has("9781481414432")).toBe(false);
+  });
+
+  it("drops Chayil Hush holdings and leaves a non-Chayil Hush card", () => {
+    const payload = buildCollection(
+      [
+        {
+          filePath: "Sora-titles.xlsx",
+          label: "Sora-titles.xlsx",
+          kind: "sora",
+          rows: [
+            {
+              TitleID: 1,
+              Title: "Hush",
+              Creator: "Chayil, Eishes",
+              ISBN: "9780802722706",
+              Format: "Ebook",
+              "Content access levels": "High School",
+            },
+            {
+              TitleID: 2,
+              Title: "Hush",
+              Creator: "Woodson, Jacqueline",
+              ISBN: "9780142500491",
+              Format: "Ebook",
+              "Content access levels": "Middle School",
+            },
+          ],
+        },
+      ],
+      { exclusions: HUSH_DESK_EXCLUSIONS },
+    );
+    expect(payload.titles.filter((title) => titleKey(title.title) === "hush")).toHaveLength(1);
+    const hush = payload.titles.find((title) => titleKey(title.title) === "hush");
+    expect(hush.authors.some((author) => /woodson/i.test(author))).toBe(true);
+    expect(hush.authors.some((author) => /chayil/i.test(author))).toBe(false);
+    expect(hush.isbnDigits).toContain("9780142500491");
+    expect(hush.isbnDigits).not.toContain("9780802722706");
   });
 
   it("drops hideFromDesk holdings so they never become In collection cards", () => {

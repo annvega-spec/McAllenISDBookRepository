@@ -64,7 +64,14 @@ The same book may appear on more than one spreadsheet (different ISBNs or postin
 
 The original posted list stays in `data/master-list.xlsx`. Additional files live in `data/incoming/` and are **unioned** with that list (never a replace). Re-running import with the same files does not double the list.
 
-To keep a title off the approved / posted-for-community-review list, add it to `data/exclusions.json` (normalized title + author). Import skips those posted rows so a later spreadsheet cannot put them back. Follett Destiny and Sora holdings-only copies may still search as **In collection**, unless the exclusion also sets `"hideFromDesk": true` — that drops matching holdings cards (and longer titles that start with the same normalized title, such as a study guide named after the work) so desk search returns no match. Current exclusions: **Crank** and **Glass** by Ellen Hopkins (posted list only), and **The Handmaid's Tale** by Margaret Atwood (hidden from the desk entirely).
+To keep a title off the approved / posted-for-community-review list, add it to `data/exclusions.json` (normalized title + author). Import skips those posted rows so a later spreadsheet cannot put them back. Follett Destiny and Sora holdings-only copies may still search as **In collection**, unless the exclusion also sets `"hideFromDesk": true` — that drops matching holdings cards (and longer titles that start with the same normalized title, such as a study guide named after the work) so desk search returns no match.
+
+Optional exclusion fields:
+
+- `"matchAuthor": true` — hide only rows whose author matches. Use this when the same normalized title is more than one work (Judy Blume **Forever** vs Maggie Stiefvater **Forever**; Eishes Chayil **Hush** vs Jacqueline Woodson / Skye Melki-Wegner).
+- `"aliases"` — extra title strings that use the same hide rule (Inuyasha / Inu Yasha volumes; Black Butler also matches the PDF misspelling Black Butter).
+
+Posted-only exclusions: **Crank** and **Glass** by Ellen Hopkins. Hidden from the desk: **The Handmaid's Tale** by Margaret Atwood, plus the district challenge list in `data/exclusions.json` (Lessons in Chemistry, The Lovely Bones, Water for Elephants, Judy Blume Forever, Eishes Chayil Hush, Let's Talk About It by Erika Moen, and the rest of that PDF).
 
 Current additional sources:
 
@@ -113,7 +120,7 @@ Only do this if you received a **full** new master workbook meant to stand in fo
 npm test
 ```
 
-Covers import counts, merge/idempotent extra spreadsheets, ISBN cleanup (including scientific notation), titled Follett Title/Subtitle grouping (one title, all ISBNs), untitled Follett + posted ISBN grouping, Follett Sound/Recording audiobook alignment, Sora Ebook/Audiobook title alignment (including skipping Staff Only), posted-title exclusions (`data/exclusions.json`, including Crank/Glass) and hide-from-desk exclusions (The Handmaid's Tale), and lookups such as “101 Dalmatians”, All Campuses titles, eBook orders, and Follett ISBNs.
+Covers import counts, merge/idempotent extra spreadsheets, ISBN cleanup (including scientific notation), titled Follett Title/Subtitle grouping (one title, all ISBNs), untitled Follett + posted ISBN grouping, Follett Sound/Recording audiobook alignment, Sora Ebook/Audiobook title alignment (including skipping Staff Only), posted-title exclusions (`data/exclusions.json`, including Crank/Glass) and hide-from-desk exclusions (The Handmaid's Tale and the district challenge list, including author-scoped Forever/Hush and series aliases), and lookups such as “101 Dalmatians”, All Campuses titles, eBook orders, and Follett ISBNs.
 
 ## Stack
 
