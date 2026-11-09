@@ -22,7 +22,7 @@ describe("collection import", () => {
     expect(data.uniqueTitleCount).toBeGreaterThan(5000);
     expect(data.titles).toHaveLength(data.uniqueTitleCount);
     expect(data.batches).toEqual(
-      expect.arrayContaining(["Sep 2025", "Oct 2025", "Nov 2025", "Jan 2026", "2026-2027", "All Campuses", "eBook order", "Sora 2026-09-16"]),
+      expect.arrayContaining(["Sep 2025", "Oct 2025", "Nov 2025", "Jan 2026", "2026-2027", "All Campuses", "eBook order", "McAllen 100", "Sora 2026-09-16"]),
     );
   });
 
@@ -423,5 +423,68 @@ describe("Sora Ebook/Audiobook import", () => {
     expect(title?.batches).toEqual(expect.arrayContaining(["Sora 2026-09-16"]));
     expect(title?.levels).toEqual(expect.arrayContaining(["Elementary"]));
     expect(title?.isbnDigits).toContain("9781449466060");
+  });
+});
+
+describe("later campus, McAllen 100, and eBook order lists", () => {
+  it("adds Everything MLB once, with the hyphenated 979 ISBN, as posted All Campuses", () => {
+    const results = searchTitles(data, "Everything MLB", { holdingsIndex });
+    expect(results.filter((item) => normalizeTitle(item.title.title) === "everything mlb")).toHaveLength(1);
+    const title = classifySearch(results).match?.title;
+    expect(title?.title).toBe("Everything MLB");
+    expect(title?.posted).toBe(true);
+    expect(title?.batches).toEqual(expect.arrayContaining(["All Campuses"]));
+    expect(title?.levels).toEqual(expect.arrayContaining(["Middle"]));
+    expect(title?.isbnDigits).toContain("9798893045581");
+    expect(title?.isbnDigits.some((isbn) => /e/i.test(isbn) || isbn.includes("-"))).toBe(false);
+
+    const byIsbn = classifySearch(searchTitles(data, "979-88-930455-8-1", { holdingsIndex })).match?.title;
+    expect(byIsbn?.title).toBe("Everything MLB");
+  });
+
+  it("unions a new ISBN onto an existing title instead of a second card", () => {
+    const results = searchTitles(data, "Leatherback Sea Turtles", { holdingsIndex });
+    expect(results.filter((item) => normalizeTitle(item.title.title) === "leatherback sea turtles")).toHaveLength(1);
+    const title = classifySearch(results).match?.title;
+    expect(title?.isbnDigits).toContain("9798368796857");
+    expect(title?.posted).not.toBe(false);
+  });
+
+  it("keeps one Olympic Soccer card for both new ISBNs", () => {
+    const results = searchTitles(data, "Olympic Soccer", { holdingsIndex });
+    expect(results.filter((item) => normalizeTitle(item.title.title) === "olympic soccer")).toHaveLength(1);
+    const title = classifySearch(results).match?.title;
+    expect(title?.isbnDigits).toEqual(expect.arrayContaining(["9781098295509", "9781098295516"]));
+  });
+
+  it("adds a McAllen 100 Spanish title by title and ISBN and posts it for review", () => {
+    const results = searchTitles(data, "Coco se cepilla los dientes", { holdingsIndex });
+    expect(results.filter((item) => normalizeTitle(item.title.title) === "coco se cepilla los dientes")).toHaveLength(1);
+    const title = classifySearch(results).match?.title;
+    expect(title?.posted).toBe(true);
+    expect(title?.batches).toEqual(expect.arrayContaining(["McAllen 100"]));
+    expect(title?.authors.some((author) => /cinetto/i.test(author))).toBe(true);
+    expect(title?.isbnDigits).toContain("9789878371436");
+    expect(title?.levels).not.toContain("LG");
+
+    const byIsbn = classifySearch(searchTitles(data, "9789878371436", { holdingsIndex })).match?.title;
+    expect(normalizeTitle(byIsbn?.title || "")).toBe("coco se cepilla los dientes");
+  });
+
+  it("unions the McAllen 100 Macbeth ISBN onto the existing holdings card and marks that card posted", () => {
+    const results = searchTitles(data, "Macbeth", { holdingsIndex });
+    expect(results.filter((item) => normalizeTitle(item.title.title) === "macbeth")).toHaveLength(1);
+    const title = classifySearch(results).match?.title;
+    expect(title?.title).toBe("Macbeth");
+    expect(title?.inCollection).toBe(true);
+    expect(title?.posted).toBe(true);
+    expect(title?.batches).toEqual(expect.arrayContaining(["McAllen 100", "Follett 9.16.26"]));
+    expect(title?.isbnDigits).toContain("9788467945928");
+  });
+
+  it("does not create cards from blank campus rows, totals, or the McAllen notes sheet", () => {
+    expect(data.titles.some((title) => /^(total|totals|notes|selection evidence)$/i.test(title.title.trim()))).toBe(false);
+    expect(data.titles.some((title) => title.title === "Should Not Import")).toBe(false);
+    expect(data.titles.some((title) => normalizeTitle(title.title) === "elementary")).toBe(false);
   });
 });

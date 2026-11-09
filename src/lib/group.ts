@@ -1,5 +1,5 @@
 import type { CollectionData, Reviews, ScoredTitle, TitleRecord } from "../types";
-import { normalizeLoose, normalizeTitle } from "./normalize";
+import { normalizeLoose, normalizeTitle, titlesLookRelated } from "./normalize";
 
 function uniqueStrings(values: string[], keyFn: (value: string) => string = (value) => value.toLowerCase()): string[] {
   const out: string[] = [];
@@ -138,20 +138,24 @@ function collapseClusters<T>(items: Array<Cluster<T>>, mergeExtra: (left: T, rig
     return current;
   }
 
-  const isbnOwner = new Map<string, string>();
+  const isbnOwners = new Map<string, string[]>();
   for (const [key, cluster] of groups) {
     for (const isbn of cluster.record.isbnDigits) {
-      if (!isbnOwner.has(isbn)) {
-        isbnOwner.set(isbn, key);
-        continue;
+      const owners = isbnOwners.get(isbn) || [];
+      for (const ownerKey of owners) {
+        const a = find(key);
+        const b = find(ownerKey);
+        if (a === b) continue;
+        const left = groups.get(key)!.record;
+        const right = groups.get(ownerKey)!.record;
+        const leftTitled = Boolean(normalizeTitle(left.title || ""));
+        const rightTitled = Boolean(normalizeTitle(right.title || ""));
+        if (leftTitled && rightTitled && !titlesLookRelated(left.title, right.title)) continue;
+        if (!leftTitled && rightTitled) parent.set(a, b);
+        else parent.set(b, a);
       }
-      const a = find(key);
-      const b = find(isbnOwner.get(isbn)!);
-      if (a === b) continue;
-      const aTitled = Boolean(normalizeTitle(groups.get(a)!.record.title || ""));
-      const bTitled = Boolean(normalizeTitle(groups.get(b)!.record.title || ""));
-      if (!aTitled && bTitled) parent.set(a, b);
-      else parent.set(b, a);
+      owners.push(key);
+      isbnOwners.set(isbn, owners);
     }
   }
 
