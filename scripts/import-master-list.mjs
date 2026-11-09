@@ -65,6 +65,11 @@ if (collection.stats.skippedExcludedRows) {
     `Skipped ${collection.stats.skippedExcludedRows} excluded title row${collection.stats.skippedExcludedRows === 1 ? "" : "s"}`,
   );
 }
+if (collection.stats.skippedEmptyRows) {
+  console.log(
+    `Skipped ${collection.stats.skippedEmptyRows} blank, total, or note row${collection.stats.skippedEmptyRows === 1 ? "" : "s"}`,
+  );
+}
 console.log(`Unique titles: ${collection.uniqueTitleCount}`);
 console.log(`Posted periods: ${collection.batches.join(", ")}`);
 console.log(`Levels: ${collection.levels.join(", ")}`);

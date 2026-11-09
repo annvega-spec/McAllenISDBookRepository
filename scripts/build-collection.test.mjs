@@ -1,6 +1,7 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import XLSX from "xlsx";
 import {
@@ -12,11 +13,14 @@ import {
   ingestFollettRows,
   isExcludedPostedTitle,
   isHiddenFromDesk,
+  isJunkTitle,
   isSoraStaffOnly,
   loadPostedExclusions,
   pickFollettSources,
+  readSpreadsheet,
   rowFingerprint,
   titleKey,
+  titlesLookRelated,
 } from "../scripts/lib/build-collection.mjs";
 import { parseIsbnCell } from "../scripts/lib/isbn.mjs";
 
@@ -64,6 +68,48 @@ describe("spreadsheet merge", () => {
     expect(twice.rowCount).toBe(once.rowCount);
     expect(twice.stats.skippedDuplicateRows).toBeGreaterThan(0);
     expect(rowFingerprint(list[0])).toBe(rowFingerprint(list[1]));
+  });
+
+  it("unions a series subtitle onto the shorter title when they share an ISBN", () => {
+    const payload = buildCollection([
+      rows([{ Title: "Dawn on the Coast", Author: "Martin, Ann M.", ISBN: "9798368795775", "Source Batch": "2026-2027" }]),
+      rows([
+        {
+          Title: "The Baby-sitters Club. 19,Dawn on the coast",
+          Author: "Nopra, Arley",
+          ISBN: "9798368795775",
+          "Source Batch": "All Campuses",
+        },
+      ]),
+    ]);
+    expect(payload.uniqueTitleCount).toBe(1);
+    expect(payload.titles[0].isbnDigits).toContain("9798368795775");
+  });
+
+  it("does not collapse unrelated titles that share an ISBN", () => {
+    expect(titlesLookRelated("Sweet Chaos", "The Mirror of Infinite Endings")).toBe(false);
+    expect(titlesLookRelated("Dawn on the Coast", "The Baby-sitters Club. 19,Dawn on the coast")).toBe(true);
+    expect(titlesLookRelated("Dogman: Fetch-22", "Dog Man. Fetch-22")).toBe(true);
+    expect(titlesLookRelated("Scaredy Squrrel Goes Camping", "Scaredy Squirrel Goes Camping")).toBe(true);
+    expect(titlesLookRelated("Sunrise on the Reaping", "Sunrise on the Reaping (A Hunger Games Novel)")).toBe(true);
+    expect(titlesLookRelated("Sunrise on the Reaping", "The Girl Who Loved Monsters")).toBe(false);
+    const payload = buildCollection([
+      rows([{ Title: "Sweet Chaos", Author: "Wolff, Tracy", ISBN: "9781649377036", "Source Batch": "Oct 2025" }]),
+      rows([
+        {
+          Title: "The Mirror of Infinite Endings",
+          Author: "Garber, Stephanie",
+          ISBN: "9781649377036",
+          "Source Batch": "All Campuses",
+        },
+      ]),
+    ]);
+    expect(payload.uniqueTitleCount).toBe(2);
+    expect(payload.titles.map((title) => title.title).sort()).toEqual([
+      "Sweet Chaos",
+      "The Mirror of Infinite Endings",
+    ]);
+    expect(payload.titles.every((title) => title.isbnDigits.includes("9781649377036"))).toBe(true);
   });
 
   it("groups a shared ISBN even when the title text differs slightly", () => {
@@ -151,6 +197,14 @@ describe("ISBN normalization", () => {
     expect(messy.isbn13).toBe("9780028653785");
     expect(parseIsbnCell("0-02-865501-X")[0].isbn13).toMatch(/^978002865501/);
     expect(parseIsbnCell("978-0-02-105887-7")[0].isbn13).toBe("9780021058877");
+  });
+
+  it("keeps a hyphenated 979 ISBN-13 without inventing an ISBN-10", () => {
+    expect(parseIsbnCell("979-88-930455-8-1")[0]).toEqual({
+      isbn10: "",
+      isbn13: "9798893045581",
+      display: "9798893045581",
+    });
   });
 });
 
@@ -1466,5 +1520,207 @@ describe("titled Follett district report", () => {
     expect(giver).toBe("The Giver");
     expect(catalog.holdings.n).toBe(1);
     expect(String(catalog.holdings.r[0][0])).toBe("9780544336261");
+  });
+});
+
+describe("new librarian spreadsheets", () => {
+  const exclusions = loadPostedExclusions(join(dirname(fileURLToPath(import.meta.url)), "..", "data", "exclusions.json"));
+
+  it("rejects blank, total, and note labels", () => {
+    expect(isJunkTitle("Total")).toBe(true);
+    expect(isJunkTitle("Grand Total")).toBe(true);
+    expect(isJunkTitle("Notes")).toBe(true);
+    expect(isJunkTitle("Selection evidence")).toBe(true);
+    expect(isJunkTitle("Everything MLB")).toBe(false);
+  });
+
+  it("unions All Campuses and MS Books, and skips level-only rows", () => {
+    const dir = mkdtempSync(join(tmpdir(), "misd-campuses-"));
+    const file = join(dir, "All-Campuses-and-MS-Books-a.xlsx");
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet([
+        {
+          "Elementary, Middle or High": "Middle School",
+          Title: "Everything MLB",
+          Author: "McKinney, Donna B",
+          "ISBN-13": "979-88-930455-8-1",
+        },
+        { "Elementary, Middle or High": "Elementary", Title: "", Author: "", ISBN: "" },
+        { "Elementary, Middle or High": "High School", Title: "Total", Author: "", ISBN: "" },
+        {
+          "Elementary, Middle or High": "High",
+          Title: "Crank",
+          Author: "Ellen Hopkins",
+          ISBN: "9781442471818",
+        },
+        {
+          "Elementary, Middle or High": "High",
+          Title: "The Handmaid's Tale",
+          Author: "Margaret Atwood",
+          ISBN: "9780385490818",
+        },
+      ]),
+      "All Campuses",
+    );
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet([
+        {
+          "Elementary, Middle or High": "Middle School",
+          Title: "Everything MLB",
+          Author: "McKinney, Donna B",
+          "ISBN-13": "979-88-930455-8-1",
+        },
+        {
+          "Elementary, Middle or High": "Middle",
+          Title: "Mexikid Dreams",
+          Author: "Martin, Pedro",
+          ISBN: "979-83-18-95780-2",
+        },
+      ]),
+      "MS Books",
+    );
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["Notes"], ["do not import"]]), "Notes");
+    XLSX.writeFile(wb, file);
+
+    const read = readSpreadsheet(file);
+    expect(read.kind).toBe("all-campuses");
+    expect(read.sheet).toBe("All Campuses, MS Books");
+    const payload = buildCollection([read], { exclusions });
+    expect(payload.uniqueTitleCount).toBe(2);
+    expect(payload.stats.skippedEmptyRows).toBeGreaterThan(0);
+    expect(payload.stats.skippedExcludedRows).toBe(2);
+    expect(payload.stats.skippedDuplicateRows).toBe(1);
+    const mlb = payload.titles.find((title) => title.title === "Everything MLB");
+    expect(mlb?.posted).toBe(true);
+    expect(mlb?.inCollection).toBe(false);
+    expect(mlb?.batches).toEqual(["All Campuses"]);
+    expect(mlb?.levels).toEqual(["Middle"]);
+    expect(mlb?.isbnDigits).toContain("9798893045581");
+    expect(mlb?.isbnDigits.some((isbn) => isbn.length === 10)).toBe(false);
+    const dreams = payload.titles.find((title) => title.title === "Mexikid Dreams");
+    expect(dreams?.isbnDigits).toContain("9798318957802");
+    expect(payload.titles.some((title) => /crank|handmaid|total|elementary/i.test(title.title))).toBe(false);
+  });
+
+  it("imports McAllen 100 by title and ISBN and ignores the notes sheet", () => {
+    const dir = mkdtempSync(join(tmpdir(), "misd-mcallen-"));
+    const file = join(dir, "McAllen-100-titles.xlsx");
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet([
+        {
+          Title: "Coco se cepilla los dientes",
+          "Author/Artist": "Liliana Cinetto / Laura Aguerrebehere",
+          Audience: "Children",
+          Interestlevel: "LG",
+          ISBN: 9789878371436,
+          Booklist: "",
+          Kirkus: "",
+        },
+        { Title: "Let's Talk About It", "Author/Artist": "Erika Moen", ISBN: "9781984893147", Interestlevel: "YA" },
+        { Title: "Total", "Author/Artist": "", ISBN: "" },
+      ]),
+      "McAllen 100 titles",
+    );
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([
+        ["Review and selection evidence"],
+        ["100 titles. The 74 new suggestions had at least five tracked copies."],
+        ["Title", "ISBN"],
+        ["Should Not Import", "9780000000001"],
+      ]),
+      "Selection evidence",
+    );
+    XLSX.writeFile(wb, file);
+
+    const read = readSpreadsheet(file);
+    expect(read.kind).toBe("mcallen-100");
+    expect(read.sheet).toBe("McAllen 100 titles");
+    expect(read.rows.some((row) => row.Title === "Should Not Import")).toBe(false);
+    expect(read.rows[0].Author).toMatch(/Cinetto/);
+    const payload = buildCollection([read], { exclusions });
+    expect(payload.uniqueTitleCount).toBe(1);
+    expect(payload.stats.skippedExcludedRows).toBe(1);
+    const coco = payload.titles[0];
+    expect(coco.title).toBe("Coco se cepilla los dientes");
+    expect(coco.posted).toBe(true);
+    expect(coco.inCollection).toBe(false);
+    expect(coco.batches).toEqual(["McAllen 100"]);
+    expect(coco.levels).toEqual([]);
+    expect(coco.audiences).toEqual(["Children"]);
+    expect(coco.isbnDigits).toContain("9789878371436");
+    expect(payload.titles.some((title) => /talk about it|should not import|total/i.test(title.title))).toBe(false);
+  });
+
+  it("treats another eBook order sheet as posted and does not double cards", () => {
+    const dir = mkdtempSync(join(tmpdir(), "misd-ebook-"));
+    const file = join(dir, "ebook-list-D.xlsx");
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet([
+        {
+          QTY: "1",
+          Title: "ALWAYS A CATCH! : 1 : HOW I PUNCHED MY WAY INTO MARRYING A PRINCE",
+          Author: "MOMOYO, MAYO",
+          ISBN: "9781646097791",
+          Edition: "GRAPHIC NOVEL/PERPETUAL/SINGLE-USER EBOOK",
+        },
+        {
+          QTY: "1",
+          Title: "ALWAYS A CATCH! : 2 : HOW I PUNCHED MY WAY INTO MARRYING A PRINCE",
+          Author: "MOMOYO, MAYO",
+          ISBN: "9781646097913",
+          Edition: "GRAPHIC NOVEL/PERPETUAL/SINGLE-USER EBOOK",
+        },
+        { QTY: "", Title: "Notes", Author: "", ISBN: "", Edition: "" },
+      ]),
+      "Page 1",
+    );
+    XLSX.writeFile(wb, file);
+    const read = readSpreadsheet(file);
+    expect(read.kind).toBe("ebook-order");
+    const once = buildCollection([read], { exclusions });
+    const twice = buildCollection([read, read], { exclusions });
+    expect(once.uniqueTitleCount).toBe(2);
+    expect(twice.uniqueTitleCount).toBe(2);
+    expect(twice.stats.skippedDuplicateRows).toBeGreaterThan(0);
+    expect(once.titles.every((title) => title.posted && title.formats.ebook && title.batches.includes("eBook order"))).toBe(true);
+    expect(once.titles.map((title) => titleKey(title.title)).sort()).toEqual([
+      "always a catch 1 how i punched my way into marrying a prince",
+      "always a catch 2 how i punched my way into marrying a prince",
+    ]);
+  });
+
+  it("reads the saved campus, McAllen 100, and eBook order workbooks", () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+    const campus = readSpreadsheet(join(root, "data/incoming/All-Campuses-and-MS-Books-a.xlsx"));
+    const campusB = readSpreadsheet(join(root, "data/incoming/All-Campuses-and-MS-Books-b.xlsx"));
+    const mcallen = readSpreadsheet(join(root, "data/incoming/McAllen-100-titles.xlsx"));
+    const ebook = readSpreadsheet(join(root, "data/incoming/ebook-list-D.xlsx"));
+    expect(campus.kind).toBe("all-campuses");
+    expect(campus.sheet).toBe("All Campuses, MS Books");
+    expect(campusB.sheet).toBe(campus.sheet);
+    expect(campusB.rows).toHaveLength(campus.rows.length);
+    expect(mcallen.kind).toBe("mcallen-100");
+    expect(mcallen.sheet).toBe("McAllen 100 titles");
+    expect(mcallen.rows).toHaveLength(100);
+    expect(mcallen.rows.some((row) => /selection evidence/i.test(String(row.Title || "")))).toBe(false);
+    expect(ebook.kind).toBe("ebook-order");
+    expect(ebook.sheet).toBe("Page 1");
+    expect(ebook.rows.some((row) => String(row.Title).startsWith("ALWAYS A CATCH! : 1"))).toBe(true);
+
+    const payload = buildCollection([campus, campusB, mcallen], { exclusions });
+    expect(payload.titles.filter((title) => title.title === "Everything MLB")).toHaveLength(1);
+    expect(payload.titles.filter((title) => titleKey(title.title) === "olympic soccer")).toHaveLength(1);
+    const soccer = payload.titles.find((title) => titleKey(title.title) === "olympic soccer");
+    expect(soccer?.isbnDigits).toEqual(expect.arrayContaining(["9781098295509", "9781098295516"]));
+    expect(payload.titles.some((title) => title.batches.includes("McAllen 100"))).toBe(true);
+    expect(payload.titles.some((title) => /handmaid|let s talk about it|^crank$|^glass$/i.test(titleKey(title.title)))).toBe(false);
   });
 });

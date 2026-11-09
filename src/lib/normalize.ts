@@ -74,6 +74,70 @@ export function diceCoefficient(a: string, b: string): number {
   return (2 * overlap) / (aGrams.size + bGrams.size);
 }
 
+const TITLE_RELATION_STOP = new Set([
+  "a",
+  "an",
+  "the",
+  "of",
+  "and",
+  "or",
+  "vol",
+  "volume",
+  "book",
+  "part",
+  "novel",
+  "graphic",
+  "edition",
+  "standard",
+]);
+
+function foldedTitleKey(title: string): string {
+  return normalizeTitle(title.normalize("NFD").replace(/\p{M}/gu, ""));
+}
+
+function relationTokens(titleKey: string): string[] {
+  return titleKey.split(" ").filter((token) => token.length > 2 && !TITLE_RELATION_STOP.has(token));
+}
+
+/**
+ * Same work for ISBN union. Kept in step with scripts/lib/build-collection.mjs
+ * `titlesLookRelated`: spacing, accents, a shorter title inside a longer one,
+ * or a one-character typo. Unrelated titles are not the same work.
+ */
+export function titlesLookRelated(left: string, right: string): boolean {
+  const a = foldedTitleKey(left);
+  const b = foldedTitleKey(right);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const compactA = a.replace(/ /g, "");
+  const compactB = b.replace(/ /g, "");
+  if (compactA === compactB) return true;
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  const [shortCompact, longCompact] = compactA.length <= compactB.length ? [compactA, compactB] : [compactB, compactA];
+  if (shorter.length >= 8 && longer.includes(shorter)) return true;
+  if (shortCompact.length >= 8 && longCompact.includes(shortCompact)) return true;
+  if (shortCompact.length >= 6 && longCompact.startsWith(shortCompact)) return true;
+  const shortTokens = relationTokens(shorter);
+  const longTokenList = relationTokens(longer);
+  const longTokens = new Set(longTokenList);
+  if (shortTokens.length >= 2 && shortTokens.every((token) => longTokens.has(token))) return true;
+  if (shortTokens.length >= 3 && longTokenList.length >= 3) {
+    let shared = 0;
+    const used = new Set<number>();
+    for (const token of shortTokens) {
+      const match = longTokenList.findIndex(
+        (other, index) => !used.has(index) && (other === token || (token.length >= 5 && other.length >= 5 && levenshtein(token, other) <= 1)),
+      );
+      if (match >= 0) {
+        used.add(match);
+        shared += 1;
+      }
+    }
+    if (shared >= 3 && shared / shortTokens.length >= 0.75) return true;
+  }
+  return false;
+}
+
 export function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
   if (!a.length) return b.length;

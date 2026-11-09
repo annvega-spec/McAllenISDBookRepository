@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { collapseCollection } from "./lib/group";
 import { buildHoldingsIndex } from "./lib/holdings";
 import { parseIsbnCell } from "./lib/isbn";
 import { normalizeTitle } from "./lib/normalize";
@@ -300,5 +301,60 @@ describe("Sora title alignment", () => {
     expect(results.filter((item) => normalizeTitle(item.title.title) === "101 dalmatians")).toHaveLength(1);
     expect(results[0].title.isbns).toEqual(expect.arrayContaining(["9780736481571", "9780736482000"]));
     expect(results[0].title.formats.ebook).toBe(true);
+  });
+});
+
+describe("desk ISBN collapse", () => {
+  it("keeps unrelated titles separate when they share an ISBN", () => {
+    const collection: CollectionData = {
+      ...data,
+      uniqueTitleCount: 2,
+      titles: [
+        title({
+          id: "chaos",
+          title: "Sweet Chaos",
+          authors: ["Wolff, Tracy"],
+          isbns: ["9781649377036"],
+          isbnDigits: ["9781649377036"],
+        }),
+        title({
+          id: "mirror",
+          title: "The Mirror of Infinite Endings",
+          authors: ["Garber, Stephanie"],
+          isbns: ["9781649377036"],
+          isbnDigits: ["9781649377036"],
+        }),
+      ],
+    };
+    const collapsed = collapseCollection(collection);
+    expect(collapsed.uniqueTitleCount).toBe(2);
+    expect(collapsed.titles.map((item) => item.title).sort()).toEqual([
+      "Sweet Chaos",
+      "The Mirror of Infinite Endings",
+    ]);
+  });
+
+  it("joins a series subtitle to the shorter title when they share an ISBN", () => {
+    const collection: CollectionData = {
+      ...data,
+      uniqueTitleCount: 2,
+      titles: [
+        title({
+          id: "dawn",
+          title: "Dawn on the Coast",
+          authors: ["Martin, Ann M."],
+          isbns: ["9798368795775"],
+          isbnDigits: ["9798368795775"],
+        }),
+        title({
+          id: "bsc",
+          title: "The Baby-sitters Club. 19,Dawn on the coast",
+          authors: ["Nopra, Arley"],
+          isbns: ["9798368795775"],
+          isbnDigits: ["9798368795775"],
+        }),
+      ],
+    };
+    expect(collapseCollection(collection).uniqueTitleCount).toBe(1);
   });
 });

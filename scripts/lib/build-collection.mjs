@@ -57,6 +57,7 @@ const FOLLETT_BATCH = "Follett 9.16.26";
 const ALL_CAMPUSES_BATCH = "All Campuses";
 const EBOOK_ORDER_BATCH = "eBook order";
 const SORA_BATCH = "Sora 2026-09-16";
+const MCALLEN_100_BATCH = "McAllen 100";
 
 const HEADER_ALIASES = {
   title: "Title",
@@ -64,6 +65,7 @@ const HEADER_ALIASES = {
   author: "Author",
   authors: "Author",
   authorname: "Author",
+  authorartist: "Author",
   creator: "Author",
   sourcebatch: "Source Batch",
   batch: "Source Batch",
@@ -114,6 +116,13 @@ const HEADER_ALIASES = {
 export function cell(value) {
   if (value == null) return "";
   return String(value).trim();
+}
+
+/** Blank rows, totals, and note labels are not books. */
+export function isJunkTitle(title) {
+  const v = cell(title).replace(/\s+/g, " ");
+  if (!v) return false;
+  return /^(grand\s+)?totals?$/i.test(v) || /^(notes?|selection evidence|review and selection evidence)$/i.test(v);
 }
 
 const ARTICLES = new Set(["a", "an", "the"]);
@@ -516,6 +525,99 @@ function mergeGroupInto(target, source) {
   for (const file of source.sourceFiles) target.sourceFiles.add(file);
 }
 
+const TITLE_RELATION_STOP = new Set([
+  "a",
+  "an",
+  "the",
+  "of",
+  "and",
+  "or",
+  "vol",
+  "volume",
+  "book",
+  "part",
+  "novel",
+  "graphic",
+  "edition",
+  "standard",
+]);
+
+function significantTitleTokens(title) {
+  return titleKey(title)
+    .split(" ")
+    .filter((token) => token.length > 2 && !TITLE_RELATION_STOP.has(token));
+}
+
+function foldedTitleKey(title) {
+  const folded = cell(title)
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+  return titleKey(folded);
+}
+
+function compactTitleKey(title) {
+  return foldedTitleKey(title).replace(/ /g, "");
+}
+
+function levenshtein(left, right) {
+  const a = left;
+  const b = right;
+  if (a === b) return 0;
+  if (!a.length || !b.length) return Math.max(a.length, b.length);
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    let prev = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const next = a[i - 1] === b[j - 1] ? prev : Math.min(prev, row[j - 1], row[j]) + 1;
+      prev = row[j];
+      row[j] = next;
+    }
+  }
+  return row[b.length];
+}
+
+/** Same work: equal titles, spacing/accent variants, or the shorter title's words sit inside the longer one. */
+export function titlesLookRelated(left, right) {
+  const a = foldedTitleKey(left);
+  const b = foldedTitleKey(right);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const compactA = a.replace(/ /g, "");
+  const compactB = b.replace(/ /g, "");
+  if (compactA === compactB) return true;
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  const [shortCompact, longCompact] = compactA.length <= compactB.length ? [compactA, compactB] : [compactB, compactA];
+  if (shorter.length >= 8 && longer.includes(shorter)) return true;
+  if (shortCompact.length >= 8 && longCompact.includes(shortCompact)) return true;
+  if (shortCompact.length >= 6 && longCompact.startsWith(shortCompact)) return true;
+  const shortTokens = significantTitleTokens(shorter);
+  const longTokenList = significantTitleTokens(longer);
+  const longTokens = new Set(longTokenList);
+  if (shortTokens.length >= 2 && shortTokens.every((token) => longTokens.has(token))) return true;
+  if (shortTokens.length >= 3 && longTokenList.length >= 3) {
+    let shared = 0;
+    const used = new Set();
+    for (const token of shortTokens) {
+      const match = longTokenList.findIndex((other, index) => !used.has(index) && (other === token || (token.length >= 5 && other.length >= 5 && levenshtein(token, other) <= 1)));
+      if (match >= 0) {
+        used.add(match);
+        shared += 1;
+      }
+    }
+    if (shared >= 3 && shared / shortTokens.length >= 0.75) return true;
+  }
+  return false;
+}
+
+function groupsLookRelated(left, right) {
+  const titlesA = [...(left?.titleCounts?.keys() || [])];
+  const titlesB = [...(right?.titleCounts?.keys() || [])];
+  // An ISBN-only row (no title yet) still belongs on the titled card.
+  if (!titlesA.length || !titlesB.length) return true;
+  return titlesA.some((title) => titlesB.some((other) => titlesLookRelated(title, other)));
+}
+
 function mergeGroupsBySharedIsbn(groups) {
   const keys = [...groups.keys()];
   const parent = new Map(keys.map((key) => [key, key]));
@@ -529,16 +631,22 @@ function mergeGroupsBySharedIsbn(groups) {
     return current;
   }
 
-  const isbnOwner = new Map();
+  const isbnOwners = new Map();
   for (const [key, group] of groups) {
     for (const isbn of group.isbnMap.keys()) {
-      if (!isbnOwner.has(isbn)) {
-        isbnOwner.set(isbn, key);
-        continue;
+      const owners = isbnOwners.get(isbn) || [];
+      for (const ownerKey of owners) {
+        const a = find(key);
+        const b = find(ownerKey);
+        if (a === b) continue;
+        // A shared ISBN unions two cards only when the titles are the same work.
+        // Compare every owner, so two related titles still join when an unrelated
+        // card also carries that ISBN.
+        if (!groupsLookRelated(groups.get(key), groups.get(ownerKey))) continue;
+        parent.set(a, b);
       }
-      const a = find(key);
-      const b = find(isbnOwner.get(isbn));
-      if (a !== b) parent.set(a, b);
+      owners.push(key);
+      isbnOwners.set(isbn, owners);
     }
   }
 
@@ -638,6 +746,7 @@ function finalizeGroups(groups, sourceFiles) {
       titlesByLevel: {},
       skippedDuplicateRows: 0,
       skippedExcludedRows: 0,
+      skippedEmptyRows: 0,
       postedTitleCount: 0,
       inCollectionPostedCount: 0,
       holdingsRows: 0,
@@ -664,10 +773,24 @@ export function detectSourceKind(filePath, sheet, columns = []) {
   if (name.startsWith("ebook-list") || (cols.has("qty") && cols.has("edition") && cols.has("title") && cols.has("isbn"))) {
     return "ebook-order";
   }
-  if (name.includes("all-campuses") || sheetName === "all campuses" || cols.has("elementarymiddleorhigh")) {
+  if (name.includes("all-campuses") || sheetName === "all campuses" || sheetName === "ms books" || cols.has("elementarymiddleorhigh")) {
     return "all-campuses";
   }
+  if (name.includes("mcallen-100") || /mcallen\s*100/.test(sheetName)) return "mcallen-100";
   return "master";
+}
+
+function isIgnoredSheet(name) {
+  return /summary|evidence|notes|instruction/i.test(String(name || ""));
+}
+
+function isAllCampusesWorkbook(filePath, sheetNames) {
+  const name = basename(filePath || "").toLowerCase();
+  if (name.includes("all-campuses")) return true;
+  return sheetNames.some((sheet) => {
+    const key = String(sheet || "").toLowerCase();
+    return key === "all campuses" || key === "ms books";
+  });
 }
 
 function applySourceHints(row, kind) {
@@ -678,6 +801,9 @@ function applySourceHints(row, kind) {
   } else if (kind === "ebook-order") {
     if (!cell(row["Source Batch"])) row["Source Batch"] = EBOOK_ORDER_BATCH;
     row.eBook = true;
+    row._presence = "posted";
+  } else if (kind === "mcallen-100") {
+    if (!cell(row["Source Batch"])) row["Source Batch"] = MCALLEN_100_BATCH;
     row._presence = "posted";
   } else if (kind === "follett") {
     if (!cell(row["Source Batch"])) row["Source Batch"] = FOLLETT_BATCH;
@@ -714,22 +840,42 @@ function preferredSheetName(sheetNames, kind) {
     return sheetNames.find((name) => /title status/i.test(name)) || sheetNames[0];
   }
   if (kind === "all-campuses") {
-    return sheetNames.find((name) => /all campuses/i.test(name)) || sheetNames[0];
+    return sheetNames.find((name) => /all campuses/i.test(name)) || sheetNames.find((name) => !isIgnoredSheet(name)) || sheetNames[0];
   }
   if (kind === "ebook-order") {
-    return sheetNames.find((name) => /page 1/i.test(name)) || sheetNames[0];
+    return sheetNames.find((name) => /page 1/i.test(name)) || sheetNames.find((name) => !isIgnoredSheet(name)) || sheetNames[0];
+  }
+  if (kind === "mcallen-100") {
+    return (
+      sheetNames.find((name) => /mcallen\s*100/i.test(name) && !isIgnoredSheet(name)) ||
+      sheetNames.find((name) => !isIgnoredSheet(name)) ||
+      sheetNames[0]
+    );
   }
   if (sheetNames.includes("Master List")) return "Master List";
-  return sheetNames.find((name) => name.toLowerCase() !== "summary") || sheetNames[0];
+  return sheetNames.find((name) => !isIgnoredSheet(name)) || sheetNames[0];
+}
+
+function sheetNamesToRead(filePath, sheetNames) {
+  if (isAllCampusesWorkbook(filePath, sheetNames)) {
+    const dataSheets = sheetNames.filter((name) => !isIgnoredSheet(name));
+    return dataSheets.length ? dataSheets : sheetNames.slice(0, 1);
+  }
+  const probeKind = detectSourceKind(filePath, sheetNames[0] || "", []);
+  const preferred = preferredSheetName(sheetNames, probeKind);
+  return preferred ? [preferred] : sheetNames.slice(0, 1);
 }
 
 export function readSpreadsheet(filePath) {
   const workbook = XLSX.readFile(filePath);
-  const probeKind = detectSourceKind(filePath, workbook.SheetNames[0], []);
-  const preferred = preferredSheetName(workbook.SheetNames, probeKind);
-  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[preferred], { defval: "", raw: true }).map(canonicalizeRow);
-  const kind = detectSourceKind(filePath, preferred, rows[0] ? Object.keys(rows[0]) : []);
-  return { filePath, sheet: preferred, rows, kind };
+  const selected = sheetNamesToRead(filePath, workbook.SheetNames);
+  const chunks = selected.map((sheet) => ({
+    sheet,
+    rows: XLSX.utils.sheet_to_json(workbook.Sheets[sheet], { defval: "", raw: true }).map(canonicalizeRow),
+  }));
+  const rows = chunks.flatMap((chunk) => chunk.rows);
+  const kind = detectSourceKind(filePath, chunks[0]?.sheet || "", rows[0] ? Object.keys(rows[0]) : []);
+  return { filePath, sheet: chunks.map((chunk) => chunk.sheet).join(", "), rows, kind };
 }
 
 function isSpreadsheetName(name) {
@@ -775,6 +921,7 @@ export function buildCollection(sources, { exclusions = [] } = {}) {
   const seen = new Set();
   let skippedDuplicateRows = 0;
   let skippedExcludedRows = 0;
+  let skippedEmptyRows = 0;
   let acceptedRows = 0;
   const sourceFiles = [];
 
@@ -796,7 +943,10 @@ export function buildCollection(sources, { exclusions = [] } = {}) {
       if (material && !isFollettMaterial(material)) continue;
       const title = cell(row.Title);
       const isbns = collectIsbns(row);
-      if (!title && !isbns.size) continue;
+      if (isJunkTitle(title) || (!title && !isbns.size)) {
+        skippedEmptyRows += 1;
+        continue;
+      }
       if (
         isHiddenFromDesk(title, exclusions, cell(row.Author)) ||
         (row._presence !== "holdings" && isExcludedPostedTitle(title, cell(row.Author), exclusions))
@@ -823,6 +973,7 @@ export function buildCollection(sources, { exclusions = [] } = {}) {
   payload.rowCount = acceptedRows;
   payload.stats.skippedDuplicateRows = skippedDuplicateRows;
   payload.stats.skippedExcludedRows = skippedExcludedRows;
+  payload.stats.skippedEmptyRows = skippedEmptyRows;
   payload.stats.rowsByBatch = payload.stats.titlesByBatch;
   return payload;
 }
@@ -1177,4 +1328,4 @@ export function buildCatalogFromFiles(filePaths, { relativeTo, exclusions = [] }
   return { collection, holdings };
 }
 
-export { FOLLETT_BATCH, ALL_CAMPUSES_BATCH, EBOOK_ORDER_BATCH, SORA_BATCH };
+export { FOLLETT_BATCH, ALL_CAMPUSES_BATCH, EBOOK_ORDER_BATCH, SORA_BATCH, MCALLEN_100_BATCH };
