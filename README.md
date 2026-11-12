@@ -86,6 +86,7 @@ Current additional sources:
 | `data/incoming/ebook-list-B.xlsx` | eBook order (sheet `Page 1`) | Same columns and rules as list A. |
 | `data/incoming/ebook-list-C.xlsx` | eBook order (sheet `Page 1`) | Same columns and rules as list A. |
 | `data/incoming/ebook-list-D.xlsx` | eBook order (sheet `Page 1`) | Same columns and rules as list A. This export matches lists A–C row for row, so import does not add a second card. |
+| `data/incoming/dogman-a-sprinkle-in-time-isbns.xlsx` | Publisher and Perma-Bound ISBNs for Dog Man : a sprinkle in time (sheet `Master List`) | One posted row on the existing desk title. Colon and period variants (Dog Man: A Sprinkle in Time, Dog Man. A Sprinkle in Time) share that normalized title, so import unions the ISBNs onto the one card. Hyphenated ISBN-13 and ISBN-PB values are stored without hyphens, with ISBN-10 equivalents when the 978 check digit allows. Source batch: `All Campuses`. |
 
 Messy ISBNs are normalized on every file: hyphens, `(pbk.)` / `(hc. …)` suffixes, ISBN-10, and Excel scientific notation.
 
@@ -123,7 +124,7 @@ Only do this if you received a **full** new master workbook meant to stand in fo
 npm test
 ```
 
-Covers import counts, merge/idempotent extra spreadsheets, ISBN cleanup (including scientific notation), titled Follett Title/Subtitle grouping (one title, all ISBNs), untitled Follett + posted ISBN grouping, Follett Sound/Recording audiobook alignment, Sora Ebook/Audiobook title alignment (including skipping Staff Only), posted-title exclusions (`data/exclusions.json`, including Crank/Glass) and hide-from-desk exclusions (The Handmaid's Tale and the district challenge list, including author-scoped Forever/Hush and series aliases), and lookups such as “101 Dalmatians”, All Campuses titles, eBook orders, and Follett ISBNs.
+Covers import counts, merge/idempotent extra spreadsheets, ISBN cleanup (including scientific notation), titled Follett Title/Subtitle grouping (one title, all ISBNs), untitled Follett + posted ISBN grouping, Follett Sound/Recording audiobook alignment, Sora Ebook/Audiobook title alignment (including skipping Staff Only), posted-title exclusions (`data/exclusions.json`, including Crank/Glass) and hide-from-desk exclusions (The Handmaid's Tale and the district challenge list, including author-scoped Forever/Hush and series aliases), Dog Man / Dogman spacing (A Sprinkle in Time stays one card), and lookups such as “101 Dalmatians”, All Campuses titles, eBook orders, and Follett ISBNs.
 
 ## Stack
 

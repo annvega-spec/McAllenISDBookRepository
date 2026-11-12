@@ -488,3 +488,62 @@ describe("later campus, McAllen 100, and eBook order lists", () => {
     expect(data.titles.some((title) => normalizeTitle(title.title) === "elementary")).toBe(false);
   });
 });
+
+describe("Dog Man A Sprinkle in Time ISBNs", () => {
+  const publisherIsbn13 = "9781546199359";
+  const publisherIsbn10 = "1546199357";
+  const permaIsbn13 = "9780847921188";
+  const permaIsbn10 = "0847921182";
+
+  function sprinkleCards() {
+    return data.titles.filter((title) => /sprinkle in time/i.test(title.title) && /dog\s*man|dogman/i.test(title.title));
+  }
+
+  it("keeps one Dog Man / Dogman card and lists both normalized ISBNs", () => {
+    const cards = sprinkleCards();
+    expect(cards).toHaveLength(1);
+    const title = cards[0];
+    expect(title.title).toBe("Dog Man : a sprinkle in time");
+    expect(title.authors).toEqual(["Pilkey, Dav"]);
+    expect(title.posted).toBe(true);
+    expect(title.batches).toEqual(["All Campuses"]);
+    expect(title.isbnDigits).toEqual(
+      expect.arrayContaining(["9798318956560", publisherIsbn13, publisherIsbn10, permaIsbn13, permaIsbn10]),
+    );
+    expect(title.isbnDigits.filter((isbn) => [publisherIsbn13, publisherIsbn10, permaIsbn13, permaIsbn10].includes(isbn))).toEqual([
+      permaIsbn13,
+      publisherIsbn13,
+      permaIsbn10,
+      publisherIsbn10,
+    ]);
+    expect(title.isbnDigits.some((isbn) => isbn.includes("-"))).toBe(false);
+    expect(title.possibleDuplicate).toBe(false);
+  });
+
+  it("finds that single card by Dogman, Dog Man, and the new ISBNs", () => {
+    for (const query of [
+      "Dog Man : a sprinkle in time",
+      "Dog Man: A Sprinkle in Time",
+      "Dog Man. A Sprinkle in Time",
+      "978-1-546-19935-9",
+      "978-0-8479-2118-8",
+      publisherIsbn10,
+      permaIsbn10,
+    ]) {
+      const results = searchTitles(data, query, { holdingsIndex });
+      const hits = results.filter((item) => /sprinkle in time/i.test(item.title.title) && /dog\s*man|dogman/i.test(item.title.title));
+      expect(hits, query).toHaveLength(1);
+      expect(hits[0].title.title, query).toBe("Dog Man : a sprinkle in time");
+      expect(hits[0].title.isbnDigits, query).toEqual(expect.arrayContaining([publisherIsbn13, publisherIsbn10, permaIsbn13, permaIsbn10]));
+      expect(classifySearch(results).match?.title.title, query).toBe("Dog Man : a sprinkle in time");
+    }
+
+    const dogman = searchTitles(data, "Dogman: A Sprinkle in Time", { holdingsIndex });
+    const dogmanHits = dogman.filter((item) => /sprinkle in time/i.test(item.title.title) && /dog\s*man|dogman/i.test(item.title.title));
+    expect(dogmanHits).toHaveLength(1);
+    expect(dogmanHits[0].title.title).toBe("Dog Man : a sprinkle in time");
+    expect(dogmanHits[0].title.isbnDigits).toEqual(expect.arrayContaining([publisherIsbn13, publisherIsbn10, permaIsbn13, permaIsbn10]));
+    expect(dogman.filter((item) => /sprinkle in time/i.test(item.title.title))).toHaveLength(1);
+    expect(sprinkleCards()).toHaveLength(1);
+  });
+});
