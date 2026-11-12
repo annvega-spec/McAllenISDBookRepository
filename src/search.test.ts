@@ -547,3 +547,52 @@ describe("Dog Man A Sprinkle in Time ISBNs", () => {
     expect(sprinkleCards()).toHaveLength(1);
   });
 });
+
+describe("Dot the Ladybug ISBN", () => {
+  const isbn13 = "9780800043735";
+  const isbn10 = "0800043731";
+  const priorIsbn13 = "9780063137509";
+  const priorIsbn10 = "006313750X";
+
+  function ladybugCards() {
+    return data.titles.filter((title) => /dot the ladybug/i.test(title.title));
+  }
+
+  it("keeps one posted Dot the Ladybug card and stores the normalized ISBN", () => {
+    const cards = ladybugCards();
+    expect(cards).toHaveLength(1);
+    const title = cards[0];
+    expect(title.title).toBe("Dot the ladybug : the missing dot");
+    expect(title.authors).toEqual(["George, K.", "George, K. (Kallie), 1983-"]);
+    expect(title.posted).toBe(true);
+    expect(title.inCollection).toBe(true);
+    expect(title.batches).toEqual(["Oct 2025", "Follett 9.16.26"]);
+    expect(title.levels).toEqual(["Elementary"]);
+    expect(title.isbnDigits).toEqual([priorIsbn13, isbn13, priorIsbn10, isbn10]);
+    expect(title.isbnDigits.some((isbn) => isbn.includes("-"))).toBe(false);
+    expect(title.possibleDuplicate).toBe(false);
+
+    const dotDay = data.titles.find((item) => item.title === "Dot Day");
+    expect(dotDay?.authors).toEqual(["George, Kallie"]);
+    expect(dotDay?.batches).toEqual(["2026-2027"]);
+    expect(dotDay?.isbnDigits).toEqual(["9780063137462", "9780800043735", "0063137461", "0800043731"]);
+    expect(data.titles.filter((item) => item.title === "Dot the Ladybug")).toHaveLength(0);
+    const hidden = new Set(["crank", "glass", "handmaid s tale", "let s talk about it"]);
+    expect(data.titles.some((item) => hidden.has(normalizeTitle(item.title)))).toBe(false);
+  });
+
+  it("finds that single posted card by the subtitle and by punctuation variants", () => {
+    for (const query of [
+      "Dot the ladybug : the missing dot",
+      "Dot the Ladybug: The Missing Dot",
+      "Dot the ladybug. The missing dot",
+    ]) {
+      const results = searchTitles(data, query, { holdingsIndex });
+      const hits = results.filter((item) => item.title.title === "Dot the ladybug : the missing dot");
+      expect(hits, query).toHaveLength(1);
+      expect(hits[0].title.isbnDigits, query).toEqual([priorIsbn13, isbn13, priorIsbn10, isbn10]);
+      expect(classifySearch(results).match?.title.title, query).toBe("Dot the ladybug : the missing dot");
+    }
+    expect(ladybugCards()).toHaveLength(1);
+  });
+});
