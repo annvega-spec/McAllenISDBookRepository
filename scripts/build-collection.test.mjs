@@ -1823,3 +1823,117 @@ describe("Dog Man A Sprinkle in Time ISBNs", () => {
     );
   });
 });
+
+describe("Dot the Ladybug ISBN", () => {
+  const isbn13 = "9780800043735";
+  const isbn10 = "0800043731";
+  const priorIsbn13 = "9780063137509";
+  const priorIsbn10 = "006313750X";
+
+  function isbn13ChecksumValid(digits) {
+    let sum = 0;
+    for (let i = 0; i < digits.length; i += 1) sum += Number(digits[i]) * (i % 2 === 0 ? 1 : 3);
+    return sum % 10 === 0;
+  }
+
+  function ladybugCards(payload) {
+    return payload.titles.filter((title) => /dot the ladybug/i.test(title.title));
+  }
+
+  it("unions the ISBN onto the existing subtitle card and leaves Dot Day alone", () => {
+    expect(isbn13ChecksumValid(isbn13)).toBe(true);
+    expect(parseIsbnCell("978-0-8000-4373-5")).toEqual([{ isbn10, isbn13, display: isbn13 }]);
+
+    const payload = buildCollection([
+      rows([
+        {
+          Title: "Dot the ladybug : the missing dot",
+          Author: "George, K.",
+          ISBN: priorIsbn13,
+          "Source Batch": "Oct 2025",
+          Level: "Elementary",
+          Audience: "Lower Elementary",
+        },
+        {
+          Title: "Dot Day",
+          Author: "George, Kallie",
+          "ISBN-13": "9780063137462",
+          "ISBN-PB": "978-0-8000-4373-5",
+          "Source Batch": "2026-2027",
+          Level: "Elementary",
+        },
+      ]),
+      rows([
+        {
+          Title: "Dot the ladybug : the missing dot",
+          Author: "George, K.",
+          "ISBN-13": "978-0-8000-4373-5",
+          "Source Batch": "Oct 2025",
+          Level: "Elementary",
+          Audience: "Lower Elementary",
+        },
+      ]),
+    ]);
+
+    const cards = ladybugCards(payload);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].title).toBe("Dot the ladybug : the missing dot");
+    expect(cards[0].authors).toEqual(["George, K."]);
+    expect(cards[0].possibleDuplicate).toBe(false);
+    expect(cards[0].isbnDigits).toEqual([priorIsbn13, isbn13, priorIsbn10, isbn10]);
+    expect(cards[0].isbnDigits.some((isbn) => isbn.includes("-"))).toBe(false);
+    expect(payload.titles.filter((title) => title.title === "Dot the Ladybug")).toHaveLength(0);
+    const dotDay = payload.titles.find((title) => title.title === "Dot Day");
+    expect(dotDay?.title).toBe("Dot Day");
+    expect(dotDay?.authors).toEqual(["George, Kallie"]);
+    expect(dotDay?.isbnDigits).toEqual(expect.arrayContaining(["9780063137462", "0063137461", isbn13, isbn10]));
+  });
+
+  it("keeps colon and period variants of this subtitle on one card", () => {
+    expect(titlesLookRelated("Dot the Ladybug: The Missing Dot", "Dot the ladybug : the missing dot")).toBe(true);
+    expect(titlesLookRelated("Dot the ladybug. The missing dot", "Dot the ladybug : the missing dot")).toBe(true);
+    const payload = buildCollection([
+      rows([{ Title: "Dot the ladybug : the missing dot", Author: "George, K.", ISBN: priorIsbn13, "Source Batch": "Oct 2025" }]),
+      rows([{ Title: "Dot the Ladybug: The Missing Dot", Author: "George, K.", "ISBN-13": "978-0-8000-4373-5", "Source Batch": "Oct 2025" }]),
+      rows([{ Title: "Dot the ladybug. The missing dot", Author: "George, K.", "ISBN-13": "978-0-8000-4373-5", "Source Batch": "Oct 2025" }]),
+    ]);
+    const cards = ladybugCards(payload);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].title).toBe("Dot the ladybug : the missing dot");
+    expect(cards[0].isbnDigits).toEqual(expect.arrayContaining([priorIsbn13, priorIsbn10, isbn13, isbn10]));
+  });
+
+  it("reads the saved Dot the Ladybug ISBN workbook", () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+    const saved = readSpreadsheet(join(root, "data/incoming/dot-the-ladybug-isbn.xlsx"));
+    expect(saved.kind).toBe("master");
+    expect(saved.sheet).toBe("Master List");
+    expect(saved.rows).toHaveLength(1);
+    expect(saved.rows[0].Title).toBe("Dot the ladybug : the missing dot");
+    expect(saved.rows[0].Author).toBe("George, K.");
+    expect(String(saved.rows[0]["ISBN-13"])).toBe("978-0-8000-4373-5");
+
+    const payload = buildCollection([
+      rows([
+        {
+          Title: "Dot the ladybug : the missing dot",
+          Author: "George, K.",
+          ISBN: priorIsbn13,
+          "Source Batch": "Oct 2025",
+          Level: "Elementary",
+          Audience: "Lower Elementary",
+        },
+      ]),
+      saved,
+    ]);
+    const cards = ladybugCards(payload);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].title).toBe("Dot the ladybug : the missing dot");
+    expect(cards[0].authors).toEqual(["George, K."]);
+    expect(cards[0].batches).toEqual(["Oct 2025"]);
+    expect(cards[0].levels).toEqual(["Elementary"]);
+    expect(cards[0].audiences).toEqual(["Lower Elementary"]);
+    expect(cards[0].possibleDuplicate).toBe(false);
+    expect(cards[0].isbnDigits).toEqual([priorIsbn13, isbn13, priorIsbn10, isbn10]);
+  });
+});

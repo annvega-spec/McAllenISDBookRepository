@@ -11,6 +11,7 @@ This folder currently also holds:
 - McAllen-100-titles.xlsx (posted title list; Selection evidence sheet is ignored)
 - ebook-list-A.xlsx, ebook-list-B.xlsx, ebook-list-C.xlsx, ebook-list-D.xlsx (eBook orders)
 - dogman-a-sprinkle-in-time-isbns.xlsx (publisher and Perma-Bound ISBNs for the existing Dog Man : a sprinkle in time card)
+- dot-the-ladybug-isbn.xlsx (ISBN for the existing Dot the ladybug : the missing dot card)
 
 After a file is here, run the import steps in the main README
 under “Adding another spreadsheet.” Leave the file here afterward
