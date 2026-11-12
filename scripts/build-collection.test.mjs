@@ -1724,3 +1724,102 @@ describe("new librarian spreadsheets", () => {
     expect(payload.titles.some((title) => /handmaid|let s talk about it|^crank$|^glass$/i.test(titleKey(title.title)))).toBe(false);
   });
 });
+
+describe("Dog Man A Sprinkle in Time ISBNs", () => {
+  const publisherIsbn13 = "9781546199359";
+  const publisherIsbn10 = "1546199357";
+  const permaIsbn13 = "9780847921188";
+  const permaIsbn10 = "0847921182";
+
+  function sprinkleCards(payload) {
+    return payload.titles.filter((title) => /sprinkle in time/i.test(title.title) && /dog\s*man|dogman/i.test(title.title));
+  }
+
+  it("unions the new ISBNs onto the existing card and leaves other Dog Man volumes alone", () => {
+    const payload = buildCollection([
+      rows([
+        {
+          Title: "Dog Man : a sprinkle in time",
+          Author: "Pilkey, Dav",
+          ISBN: "9798318956560",
+          "Source Batch": "All Campuses",
+          Level: "Elementary",
+        },
+        { Title: "Dog Man. Fetch-22", Author: "Pilkey, Dav", ISBN: "9781338323214", "Source Batch": "Sep 2025" },
+      ]),
+      rows([
+        {
+          Title: "Dog Man : a sprinkle in time",
+          Author: "Pilkey, Dav",
+          "ISBN-13": "978-1-546-19935-9",
+          "ISBN-PB": "978-0-8479-2118-8",
+          "Source Batch": "All Campuses",
+          Level: "Elementary",
+        },
+      ]),
+    ]);
+
+    const sprinkle = sprinkleCards(payload);
+    expect(sprinkle).toHaveLength(1);
+    expect(sprinkle[0].title).toBe("Dog Man : a sprinkle in time");
+    expect(sprinkle[0].possibleDuplicate).toBe(false);
+    expect(sprinkle[0].isbnDigits).toEqual(
+      expect.arrayContaining([publisherIsbn13, publisherIsbn10, permaIsbn13, permaIsbn10, "9798318956560"]),
+    );
+    expect(sprinkle[0].isbnDigits.some((isbn) => isbn.includes("-"))).toBe(false);
+    expect(payload.titles.filter((title) => /fetch-?22/i.test(title.title))).toHaveLength(1);
+    expect(payload.titles.filter((title) => /dog\s*man|dogman/i.test(title.title))).toHaveLength(2);
+  });
+
+  it("keeps Dogman, colon, and period variants of this work on one card", () => {
+    expect(titlesLookRelated("Dogman: A Sprinkle in Time", "Dog Man : a sprinkle in time")).toBe(true);
+    expect(titlesLookRelated("Dog Man: A Sprinkle in Time", "Dog Man. A Sprinkle in Time")).toBe(true);
+    const payload = buildCollection([
+      rows([{ Title: "Dog Man : a sprinkle in time", Author: "Pilkey, Dav", ISBN: "9798318956560", "Source Batch": "All Campuses" }]),
+      rows([{ Title: "Dogman: A Sprinkle in Time", Author: "Pilkey, Dav", ISBN: "9798318956560", "ISBN-13": "978-1-546-19935-9", "Source Batch": "All Campuses" }]),
+      rows([{ Title: "Dog Man: A Sprinkle in Time", Author: "Pilkey, Dav", "ISBN-13": "978-1-546-19935-9", "Source Batch": "All Campuses" }]),
+      rows([{ Title: "Dog Man. A Sprinkle in Time", Author: "Pilkey, Dav", "ISBN-PB": "978-0-8479-2118-8", "Source Batch": "All Campuses" }]),
+    ]);
+    const sprinkle = sprinkleCards(payload);
+    expect(sprinkle).toHaveLength(1);
+    expect(sprinkle[0].title).toBe("Dog Man : a sprinkle in time");
+    expect(sprinkle[0].isbnDigits).toEqual(
+      expect.arrayContaining([publisherIsbn13, publisherIsbn10, permaIsbn13, permaIsbn10, "9798318956560"]),
+    );
+  });
+
+  it("reads the saved Sprinkle in Time ISBN workbook", () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+    const saved = readSpreadsheet(join(root, "data/incoming/dogman-a-sprinkle-in-time-isbns.xlsx"));
+    expect(saved.kind).toBe("master");
+    expect(saved.sheet).toBe("Master List");
+    expect(saved.rows).toHaveLength(1);
+    expect(saved.rows[0].Title).toBe("Dog Man : a sprinkle in time");
+    expect(String(saved.rows[0]["ISBN-13"])).toBe("978-1-546-19935-9");
+    expect(String(saved.rows[0]["ISBN-PB"])).toBe("978-0-8479-2118-8");
+
+    const payload = buildCollection([
+      rows([
+        {
+          Title: "Dog Man : a sprinkle in time",
+          Author: "Pilkey, Dav",
+          ISBN: "9798318956560",
+          "Source Batch": "All Campuses",
+          Level: "Elementary",
+          Audience: "Upper Elementary",
+        },
+      ]),
+      saved,
+    ]);
+    const sprinkle = sprinkleCards(payload);
+    expect(sprinkle).toHaveLength(1);
+    expect(sprinkle[0].title).toBe("Dog Man : a sprinkle in time");
+    expect(sprinkle[0].authors).toEqual(["Pilkey, Dav"]);
+    expect(sprinkle[0].batches).toEqual(["All Campuses"]);
+    expect(sprinkle[0].levels).toEqual(["Elementary"]);
+    expect(sprinkle[0].possibleDuplicate).toBe(false);
+    expect(sprinkle[0].isbnDigits).toEqual(
+      expect.arrayContaining([publisherIsbn13, publisherIsbn10, permaIsbn13, permaIsbn10, "9798318956560"]),
+    );
+  });
+});
